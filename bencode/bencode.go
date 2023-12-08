@@ -3,6 +3,7 @@ package bencode
 import (
 	"errors"
 	"io"
+	"sort"
 	"strconv"
 )
 
@@ -13,6 +14,7 @@ var ErrZeroByteString = errors.New("bytestring has length 0")
 var ErrNoColonFound = errors.New("no colon found")
 var ErrExpectedNumber = errors.New("expected number")
 var ErrExpectedByteString = errors.New("expected key string")
+var ErrNotSupportedType = errors.New("not supported type")
 
 func decodeDict(reader io.Reader) (map[string]any, error) {
 	bytes := make([]byte, 1)
@@ -222,4 +224,65 @@ func Decode(reader io.Reader) (any, error) {
 	}
 
 	return content, nil
+}
+
+func Encode(object any) (string, error) {
+	switch object.(type) {
+	case int:
+		number := object.(int)
+		encoded := "i" + strconv.Itoa(number) + "e"
+		return encoded, nil
+	case string:
+		str := object.(string)
+		length := len(str)
+		encoded := strconv.Itoa(length) + ":" + str
+		return encoded, nil
+	case []any:
+		list := object.([]any)
+		encoded := ""
+
+		for i := range list {
+			encodedElement, err := Encode(list[i])
+
+			if err != nil {
+				return "", err
+			}
+
+			encoded += encodedElement
+		}
+
+		encoded = "l" + encoded + "e"
+		return encoded, nil
+	case map[string]any:
+		dict := object.(map[string]any)
+		encoded := ""
+
+		// Keys should be encoded in sorted order.
+		keys := make([]string, 0, len(dict))
+		for k := range dict {
+			keys = append(keys, k)
+		}
+
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			encodedKey, err := Encode(key)
+			if err != nil {
+				return "", err
+			}
+
+			value := dict[key]
+			encodedValue, err := Encode(value)
+			if err != nil {
+				return "", err
+			}
+
+			encoded += encodedKey + encodedValue
+		}
+
+		encoded = "d" + encoded + "e"
+		return encoded, nil
+	default:
+		return "", ErrNotSupportedType
+	}
 }

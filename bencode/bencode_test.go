@@ -23,7 +23,7 @@ func sliceCmp(got, want any) bool {
 	return reflect.DeepEqual(got, want)
 }
 
-func TestParseBencode(t *testing.T) {
+func TestDecode(t *testing.T) {
 	generalTestCases := []testCase{
 		// No valid delimiter
 		{strings.NewReader("psa"), nil, io.EOF},
@@ -87,6 +87,48 @@ func TestParseBencode(t *testing.T) {
 	}
 
 	runTestCases("complex", complexTestCases, t, sliceCmp)
+}
+
+func TestEncode(t *testing.T) {
+	testCases := []struct {
+		input       any
+		want        string
+		wantedError error
+	}{
+		{123, "i123e", nil},
+		{0, "i0e", nil},
+		{-123, "i-123e", nil},
+		{"ben", "3:ben", nil},
+		{"", "0:", nil},
+		{[]any{0, "ben"}, "li0e3:bene", nil},
+		{map[string]any{"ben": 123, "ken": []any{}}, "d3:beni123e3:kenlee", nil},
+	}
+
+	for i, testCase := range testCases {
+		input := testCase.input
+		want := testCase.want
+		wantedError := testCase.wantedError
+
+		got, gottenErr := Encode(input)
+
+		if wantedError != nil && gottenErr == nil {
+			t.Errorf("wanted %v got nil", wantedError)
+		}
+
+		if wantedError == nil && gottenErr != nil {
+			t.Errorf("%d not expected error but got %v", i, gottenErr)
+		}
+
+		if wantedError != nil && gottenErr != nil {
+			if wantedError != gottenErr {
+				t.Errorf("got %v expected %v", gottenErr, wantedError)
+			}
+		}
+
+		if got != want {
+			t.Errorf("wanted %v got %v", want, got)
+		}
+	}
 }
 
 func runTestCases(category string, testCases []testCase, t *testing.T, cmpFn testCmpFn) {
