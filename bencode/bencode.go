@@ -14,9 +14,9 @@ var ErrNoColonFound = errors.New("no colon found")
 var ErrExpectedNumber = errors.New("expected number")
 var ErrExpectedByteString = errors.New("expected key string")
 
-func decodeDict(reader io.Reader) (map[string]interface{}, error) {
+func decodeDict(reader io.Reader) (map[string]any, error) {
 	bytes := make([]byte, 1)
-	dict := make(map[string]interface{})
+	dict := make(map[string]any)
 
 	for {
 		n, err := reader.Read(bytes)
@@ -97,9 +97,9 @@ func decodeNumber(reader io.Reader) (int, error) {
 	return number, nil
 }
 
-func decodeList(reader io.Reader) ([]interface{}, error) {
+func decodeList(reader io.Reader) ([]any, error) {
 	bytes := make([]byte, 1)
-	list := make([]interface{}, 0)
+	list := make([]any, 0)
 
 	for {
 		n, err := reader.Read(bytes)
@@ -177,7 +177,7 @@ func decodeByteString(firstDigit byte, reader io.Reader) (string, error) {
 	return string(byteString), nil
 }
 
-func decodeDelimiter(delimiter byte, reader io.Reader) (interface{}, error) {
+func decodeDelimiter(delimiter byte, reader io.Reader) (any, error) {
 	switch delimiter {
 	case 'd':
 		return decodeDict(reader)
@@ -190,7 +190,7 @@ func decodeDelimiter(delimiter byte, reader io.Reader) (interface{}, error) {
 	}
 }
 
-func Decode(reader io.Reader) (interface{}, error) {
+func Decode(reader io.Reader) (any, error) {
 	bytes := make([]byte, 1)
 
 	n, err := reader.Read(bytes)
