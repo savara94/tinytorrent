@@ -1,4 +1,4 @@
-package torrent
+package bencode
 
 import (
 	"io"
@@ -9,17 +9,17 @@ import (
 
 type testCase struct {
 	reader    io.Reader
-	want      interface{}
+	want      any
 	wantedErr error
 }
 
-type testCmpFn func(got, want interface{}) bool
+type testCmpFn func(got, want any) bool
 
-func simpleCmp(got, want interface{}) bool {
+func simpleCmp(got, want any) bool {
 	return got == want
 }
 
-func sliceCmp(got, want interface{}) bool {
+func sliceCmp(got, want any) bool {
 	return reflect.DeepEqual(got, want)
 }
 
@@ -55,20 +55,20 @@ func TestParseBencode(t *testing.T) {
 
 	listParsingTestCases := []testCase{
 		// Good weather cases
-		{strings.NewReader("l3:ben2:goe"), []interface{}{"ben", "go"}, nil},
-		{strings.NewReader("l3:beni56ee"), []interface{}{"ben", 56}, nil},
+		{strings.NewReader("l3:ben2:goe"), []any{"ben", "go"}, nil},
+		{strings.NewReader("l3:beni56ee"), []any{"ben", 56}, nil},
 		// Empty list
-		{strings.NewReader("le"), []interface{}{}, nil},
+		{strings.NewReader("le"), []any{}, nil},
 		// Missing end of list
 		{strings.NewReader("l"), nil, io.EOF},
 	}
 
 	dictParsingTestCases := []testCase{
 		// Good weather cases
-		{strings.NewReader("d3:ben2:goe"), map[string]interface{}{"ben": "go"}, nil},
-		{strings.NewReader("d3:beni56ee"), map[string]interface{}{"ben": 56}, nil},
+		{strings.NewReader("d3:ben2:goe"), map[string]any{"ben": "go"}, nil},
+		{strings.NewReader("d3:beni56ee"), map[string]any{"ben": 56}, nil},
 		// Empty dict
-		{strings.NewReader("de"), map[string]interface{}{}, nil},
+		{strings.NewReader("de"), map[string]any{}, nil},
 		// Missing end of dict
 		{strings.NewReader("d"), nil, io.EOF},
 	}
@@ -81,9 +81,9 @@ func TestParseBencode(t *testing.T) {
 
 	complexTestCases := []testCase{
 		// Nested lists
-		{strings.NewReader("llelleei0ee"), []interface{}{[]interface{}{}, []interface{}{[]interface{}{}}, 0}, nil},
+		{strings.NewReader("llelleei0ee"), []any{[]any{}, []any{[]any{}}, 0}, nil},
 		// Nested dicts
-		{strings.NewReader("d3:bend3:ben3:kenee"), map[string]interface{}{"ben": map[string]interface{}{"ben": "ken"}}, nil},
+		{strings.NewReader("d3:bend3:ben3:kenee"), map[string]any{"ben": map[string]any{"ben": "ken"}}, nil},
 	}
 
 	runTestCases("complex", complexTestCases, t, sliceCmp)
@@ -97,7 +97,7 @@ func runTestCases(category string, testCases []testCase, t *testing.T, cmpFn tes
 		want := testCase.want
 		wantedErr := testCase.wantedErr
 
-		got, err := ParseBencode(reader)
+		got, err := Decode(reader)
 
 		assertError(category, i, wantedErr, err, t)
 

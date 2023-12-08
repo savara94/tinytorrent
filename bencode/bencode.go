@@ -1,4 +1,4 @@
-package torrent
+package bencode
 
 import (
 	"errors"
@@ -14,9 +14,9 @@ var ErrNoColonFound = errors.New("no colon found")
 var ErrExpectedNumber = errors.New("expected number")
 var ErrExpectedByteString = errors.New("expected key string")
 
-func parseDict(reader io.Reader) (map[string]interface{}, error) {
+func decodeDict(reader io.Reader) (map[string]any, error) {
 	bytes := make([]byte, 1)
-	dict := make(map[string]interface{})
+	dict := make(map[string]any)
 
 	for {
 		n, err := reader.Read(bytes)
@@ -35,7 +35,7 @@ func parseDict(reader io.Reader) (map[string]interface{}, error) {
 			break
 		}
 
-		key, err := parseByteString(delimiter, reader)
+		key, err := decodeByteString(delimiter, reader)
 
 		if err != nil {
 			return nil, ErrExpectedByteString
@@ -52,7 +52,7 @@ func parseDict(reader io.Reader) (map[string]interface{}, error) {
 		}
 
 		delimiter = bytes[0]
-		element, err := parseDelimiter(delimiter, reader)
+		element, err := decodeDelimiter(delimiter, reader)
 
 		if err != nil {
 			return nil, err
@@ -64,7 +64,7 @@ func parseDict(reader io.Reader) (map[string]interface{}, error) {
 	return dict, nil
 }
 
-func parseNumber(reader io.Reader) (int, error) {
+func decodeNumber(reader io.Reader) (int, error) {
 	var bytesArray []byte
 	bytes := make([]byte, 1)
 
@@ -97,9 +97,9 @@ func parseNumber(reader io.Reader) (int, error) {
 	return number, nil
 }
 
-func parseList(reader io.Reader) ([]interface{}, error) {
+func decodeList(reader io.Reader) ([]any, error) {
 	bytes := make([]byte, 1)
-	list := make([]interface{}, 0)
+	list := make([]any, 0)
 
 	for {
 		n, err := reader.Read(bytes)
@@ -118,7 +118,7 @@ func parseList(reader io.Reader) ([]interface{}, error) {
 			break
 		}
 
-		element, err := parseDelimiter(delimiter, reader)
+		element, err := decodeDelimiter(delimiter, reader)
 
 		if err != nil {
 			return nil, err
@@ -130,7 +130,7 @@ func parseList(reader io.Reader) ([]interface{}, error) {
 	return list, nil
 }
 
-func parseByteString(firstDigit byte, reader io.Reader) (string, error) {
+func decodeByteString(firstDigit byte, reader io.Reader) (string, error) {
 	bytes := make([]byte, 1)
 	lengthSlice := []byte{firstDigit}
 
@@ -177,20 +177,20 @@ func parseByteString(firstDigit byte, reader io.Reader) (string, error) {
 	return string(byteString), nil
 }
 
-func parseDelimiter(delimiter byte, reader io.Reader) (interface{}, error) {
+func decodeDelimiter(delimiter byte, reader io.Reader) (any, error) {
 	switch delimiter {
 	case 'd':
-		return parseDict(reader)
+		return decodeDict(reader)
 	case 'l':
-		return parseList(reader)
+		return decodeList(reader)
 	case 'i':
-		return parseNumber(reader)
+		return decodeNumber(reader)
 	default:
-		return parseByteString(delimiter, reader)
+		return decodeByteString(delimiter, reader)
 	}
 }
 
-func ParseBencode(reader io.Reader) (interface{}, error) {
+func Decode(reader io.Reader) (any, error) {
 	bytes := make([]byte, 1)
 
 	n, err := reader.Read(bytes)
@@ -203,7 +203,7 @@ func ParseBencode(reader io.Reader) (interface{}, error) {
 		return nil, ErrEndOfReader
 	}
 
-	content, err := parseDelimiter(bytes[0], reader)
+	content, err := decodeDelimiter(bytes[0], reader)
 
 	if err != nil {
 		return nil, err
