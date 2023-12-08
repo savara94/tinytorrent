@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+
+	"example.com/bencode"
 )
 
 type FileInfo struct {
@@ -27,7 +29,7 @@ type MetaInfo struct {
 var ErrLengthAndFilesNotSpecified = errors.New("either length or files must be specified")
 
 func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
-	bencode, err := ParseBencode(reader)
+	bencode, err := bencode.Decode(reader)
 
 	if err != nil {
 		return nil, err

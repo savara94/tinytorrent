@@ -97,7 +97,7 @@ func runTestCases(category string, testCases []testCase, t *testing.T, cmpFn tes
 		want := testCase.want
 		wantedErr := testCase.wantedErr
 
-		got, err := ParseBencode(reader)
+		got, err := Decode(reader)
 
 		assertError(category, i, wantedErr, err, t)
 
