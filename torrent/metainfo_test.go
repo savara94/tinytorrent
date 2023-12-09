@@ -51,7 +51,7 @@ func TestParseMetaInfo(t *testing.T) {
 			}
 		}
 
-		if want != nil {
+		if want != nil && gottenErr == nil {
 			if want.name != gotInfo.Info.Name {
 				t.Errorf("wanted %s got %s", want.name, gotInfo.Info.Name)
 			}
