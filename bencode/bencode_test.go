@@ -175,6 +175,40 @@ func TestUnmarshal(t *testing.T) {
 			t.Errorf("Not equal %v and %v", listString, targetListString)
 		}
 	}
+
+	dict := map[string]any{
+		"ben":    "ken",
+		"number": 3,
+		"list":   []any{1, 2, 3},
+		"nested": map[string]any{"key": "value"},
+	}
+
+	goodStruct := struct {
+		Ben      string `bencode:"ben"`
+		Number   int    `bencode:"number"`
+		List     []int  `bencode:"list"`
+		Nullable *int   `bencode:"nullable"`
+	}{}
+
+	err = Unmarshal(dict, &goodStruct)
+	if err != nil {
+		t.Errorf("Not expected error %v", err)
+	}
+
+	if goodStruct.Ben != dict["ben"] || goodStruct.Number != dict["number"] || !reflect.DeepEqual(goodStruct.List, []int{1, 2, 3}) {
+		t.Errorf("Not equal %v", goodStruct)
+	}
+
+	dict["nullable"] = 5
+	err = Unmarshal(dict, &goodStruct)
+	if err != nil {
+		t.Errorf("Not expected error %v", err)
+	}
+
+	if *goodStruct.Nullable != dict["nullable"] {
+		t.Errorf("Not equal %v", goodStruct)
+	}
+
 }
 
 func toSliceOfAny[T any](s []T) []any {

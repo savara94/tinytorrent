@@ -300,7 +300,7 @@ func Decode(reader io.Reader) (any, error) {
 }
 
 func getStructFields(v any) map[string]reflect.StructField {
-	typeOfStruct := reflect.TypeOf(v)
+	typeOfStruct := reflect.TypeOf(v).Elem()
 	fields := make([]string, typeOfStruct.NumField())
 
 	fieldMap := make(map[string]reflect.StructField)
@@ -341,19 +341,23 @@ func assignStruct(source any, v any) error {
 		field := fieldMap[encodedName]
 		isNullable := false
 
-		fieldValue := reflect.ValueOf(v).FieldByName(field.Name)
+		fieldValue := reflect.ValueOf(v).Elem().FieldByName(field.Name)
+		target := fieldValue.Addr().Interface()
 
 		if fieldValue.Kind() == reflect.Pointer {
 			isNullable = true
 		}
 
 		sourceValue, exists := anyMap[encodedName]
-		if !exists && !isNullable {
+		if !isNullable && !exists {
 			return errors.New(fmt.Sprintf("%v key does not exist and %v is not nullable.", encodedName, field.Name))
 		}
 
-		structV := fieldValue.Interface()
-		Unmarshal(sourceValue, &structV)
+		if isNullable && !exists {
+			continue
+		}
+
+		Unmarshal(sourceValue, target)
 	}
 
 	return nil
@@ -425,6 +429,18 @@ func Unmarshal(source any, v any) error {
 	case reflect.String:
 		err = assignString(source, v)
 		break
+	case reflect.Pointer:
+		// Handle pointer to pointer
+		pointingType := reflect.TypeOf(v).Elem()
+		target := reflect.New(pointingType.Elem())
+		// fmt.Printf("%v %v %v", pointingType, pointingType.Elem(), target)
+		err = Unmarshal(source, target.Interface())
+
+		if err != nil {
+			return err
+		}
+
+		reflect.ValueOf(v).Elem().Set(target)
 	default:
 		return errors.New(fmt.Sprintf("%v not supported", kind))
 	}
