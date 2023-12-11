@@ -1,6 +1,7 @@
 package bencode
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -21,19 +22,77 @@ var ErrExpectedNumber = errors.New("expected number")
 var ErrExpectedByteString = errors.New("expected key string")
 var ErrNotSupportedType = errors.New("not supported type")
 
-func decodeDict(reader io.Reader) (map[string]any, error) {
-	bytes := make([]byte, 1)
+type Decoder struct {
+	reader    io.Reader
+	bytesRead int
+}
+
+func NewDecoder(reader io.Reader) *Decoder {
+	return &Decoder{reader, 0}
+}
+
+func (decoder *Decoder) readBytes(numBytes int) ([]byte, error) {
+	bytes := make([]byte, numBytes)
+
+	n, err := decoder.reader.Read(bytes)
+
+	decoder.bytesRead += n
+
+	if err != nil {
+		return nil, err
+	}
+
+	if n < numBytes {
+		return nil, ErrEndOfReader
+	}
+
+	return bytes, nil
+}
+
+func isPointerToEmptyInterface(v any) bool {
+	var sliceOfEmptyInterface []interface{}
+
+	pointerType := reflect.TypeOf(v).Elem()
+	return pointerType == reflect.TypeOf(sliceOfEmptyInterface).Elem()
+}
+
+func (decoder *Decoder) Decode(v any) error {
+	if reflect.TypeOf(v).Kind() != reflect.Pointer {
+		errMsg := fmt.Sprintf("%v not passed pointer!", v)
+		return errors.New(errMsg)
+	}
+
+	basic, err := decoder.decodeToBasicTypes()
+
+	if err != nil {
+		return err
+	}
+
+	if isPointerToEmptyInterface(v) {
+		basicValue := reflect.ValueOf(basic)
+		reflect.ValueOf(v).Elem().Set(basicValue)
+
+		return nil
+	}
+
+	return assignBasicToComplex(basic, v)
+}
+
+func Unmarshal(data []byte, v any) error {
+	reader := bytes.NewReader(data)
+	decoder := NewDecoder(reader)
+
+	return decoder.Decode(v)
+}
+
+func (decoder *Decoder) decodeDict() (map[string]any, error) {
 	dict := make(map[string]any)
 
 	for {
-		n, err := reader.Read(bytes)
+		bytes, err := decoder.readBytes(1)
 
 		if err != nil {
 			return nil, err
-		}
-
-		if n == 0 {
-			return nil, ErrEndOfReader
 		}
 
 		delimiter := bytes[0]
@@ -42,24 +101,20 @@ func decodeDict(reader io.Reader) (map[string]any, error) {
 			break
 		}
 
-		key, err := decodeByteString(delimiter, reader)
+		key, err := decoder.decodeByteString(delimiter)
 
 		if err != nil {
 			return nil, ErrExpectedByteString
 		}
 
-		n, err = reader.Read(bytes)
+		bytes, err = decoder.readBytes(1)
 
 		if err != nil {
 			return nil, err
 		}
 
-		if n == 0 {
-			return nil, ErrEndOfReader
-		}
-
 		delimiter = bytes[0]
-		element, err := decodeDelimiter(delimiter, reader)
+		element, err := decoder.decodeDelimiter(delimiter)
 
 		if err != nil {
 			return nil, err
@@ -71,19 +126,14 @@ func decodeDict(reader io.Reader) (map[string]any, error) {
 	return dict, nil
 }
 
-func decodeNumber(reader io.Reader) (int, error) {
+func (decoder *Decoder) decodeNumber() (int, error) {
 	var bytesArray []byte
-	bytes := make([]byte, 1)
 
 	for {
-		n, err := reader.Read(bytes)
+		bytes, err := decoder.readBytes(1)
 
 		if err != nil {
 			return 0, err
-		}
-
-		if n == 0 {
-			return 0, ErrEndOfReader
 		}
 
 		if bytes[0] == 'e' {
@@ -104,19 +154,14 @@ func decodeNumber(reader io.Reader) (int, error) {
 	return number, nil
 }
 
-func decodeList(reader io.Reader) ([]any, error) {
-	bytes := make([]byte, 1)
+func (decoder *Decoder) decodeList() ([]any, error) {
 	list := make([]any, 0)
 
 	for {
-		n, err := reader.Read(bytes)
+		bytes, err := decoder.readBytes(1)
 
 		if err != nil {
 			return nil, err
-		}
-
-		if n == 0 {
-			return nil, ErrEndOfReader
 		}
 
 		delimiter := bytes[0]
@@ -125,7 +170,7 @@ func decodeList(reader io.Reader) ([]any, error) {
 			break
 		}
 
-		element, err := decodeDelimiter(delimiter, reader)
+		element, err := decoder.decodeDelimiter(delimiter)
 
 		if err != nil {
 			return nil, err
@@ -137,19 +182,14 @@ func decodeList(reader io.Reader) ([]any, error) {
 	return list, nil
 }
 
-func decodeByteString(firstDigit byte, reader io.Reader) (string, error) {
-	bytes := make([]byte, 1)
-	lengthSlice := []byte{firstDigit}
+func (decoder *Decoder) decodeByteString(firstChar byte) (string, error) {
+	lengthSlice := []byte{firstChar}
 
 	for {
-		n, err := reader.Read(bytes)
+		bytes, err := decoder.readBytes(1)
 
 		if err != nil {
 			return "", err
-		}
-
-		if n == 0 {
-			return "", ErrEndOfReader
 		}
 
 		if bytes[0] == ':' {
@@ -170,30 +210,25 @@ func decodeByteString(firstDigit byte, reader io.Reader) (string, error) {
 		return "", nil
 	}
 
-	byteString := make([]byte, length)
-	n, err := reader.Read(byteString)
+	byteString, err := decoder.readBytes(length)
 
 	if err != nil {
 		return "", err
 	}
 
-	if n != length {
-		return "", ErrEndOfReader
-	}
-
 	return string(byteString), nil
 }
 
-func decodeDelimiter(delimiter byte, reader io.Reader) (any, error) {
+func (decoder *Decoder) decodeDelimiter(delimiter byte) (any, error) {
 	switch delimiter {
 	case 'd':
-		return decodeDict(reader)
+		return decoder.decodeDict()
 	case 'l':
-		return decodeList(reader)
+		return decoder.decodeList()
 	case 'i':
-		return decodeNumber(reader)
+		return decoder.decodeNumber()
 	default:
-		byteString, err := decodeByteString(delimiter, reader)
+		byteString, err := decoder.decodeByteString(delimiter)
 
 		if err != nil {
 			return nil, err
@@ -265,35 +300,18 @@ func encodeDict(dict map[string]any) (string, error) {
 	return encoded, nil
 }
 
-func Decode(reader io.Reader) (any, error) {
-	bytes := make([]byte, 1)
-
-	n, err := reader.Read(bytes)
+func (decoder *Decoder) decodeToBasicTypes() (any, error) {
+	bytes, err := decoder.readBytes(1)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if n == 0 {
-		return nil, ErrEndOfReader
-	}
-
-	content, err := decodeDelimiter(bytes[0], reader)
+	delimiter := bytes[0]
+	content, err := decoder.decodeDelimiter(delimiter)
 
 	if err != nil {
 		return nil, err
-	}
-
-	n, err = reader.Read(bytes)
-
-	if err != nil {
-		if err != io.EOF {
-			return nil, ErrEndExpected
-		}
-	}
-
-	if n > 0 {
-		return nil, ErrEndExpected
 	}
 
 	return content, nil
@@ -357,7 +375,7 @@ func assignStruct(source any, v any) error {
 			continue
 		}
 
-		Unmarshal(sourceValue, target)
+		assignBasicToComplex(sourceValue, target)
 	}
 
 	return nil
@@ -401,7 +419,7 @@ func assignSlice(source any, v any) error {
 
 	for i := range slice {
 		element := targetSlice.Index(i).Addr().Interface()
-		Unmarshal(slice[i], element)
+		assignBasicToComplex(slice[i], element)
 	}
 
 	reflect.ValueOf(v).Elem().Set(targetSlice)
@@ -409,11 +427,7 @@ func assignSlice(source any, v any) error {
 	return nil
 }
 
-func Unmarshal(source any, v any) error {
-	if reflect.TypeOf(v).Kind() != reflect.Pointer {
-		return errors.New("v is not a pointer")
-	}
-
+func assignBasicToComplex(source any, v any) error {
 	var err error
 
 	switch kind := reflect.ValueOf(v).Elem().Kind(); kind {
@@ -434,7 +448,7 @@ func Unmarshal(source any, v any) error {
 		pointingType := reflect.TypeOf(v).Elem()
 		target := reflect.New(pointingType.Elem())
 		// fmt.Printf("%v %v %v", pointingType, pointingType.Elem(), target)
-		err = Unmarshal(source, target.Interface())
+		err = assignBasicToComplex(source, target.Interface())
 
 		if err != nil {
 			return err
