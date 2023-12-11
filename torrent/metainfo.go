@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 
 	"example.com/bencode"
@@ -17,21 +18,27 @@ type FileInfo struct {
 type GeneralInfo struct {
 	Name        string      `json:"name"`
 	PieceLength int         `json:"piece length"`
-	Pieces      string      `json:"pieces"`
-	Length      *int        `json:"length"`
-	Files       *[]FileInfo `json:"files"`
+	Pieces      []byte      `json:"pieces"`
+	Length      *int        `json:"length,omitempty"`
+	Files       *[]FileInfo `json:"files,omitempty"`
+	Private     *int        `json:"private,omitempty"`
 }
 
 type MetaInfo struct {
-	Announce string      `json:"announce"`
-	Info     GeneralInfo `json:"info"`
-	infoHash []byte
+	Announce     string      `json:"announce"`
+	Comment      string      `json:"comment"`
+	CreatedBy    string      `json:"created by"`
+	CreationDate int         `json:"creation date"`
+	Encoding     string      `json:"encoding"`
+	Info         GeneralInfo `json:"info"`
+	infoHash     []byte
 }
 
 var ErrLengthAndFilesNotSpecified = errors.New("either length or files must be specified")
 
 func (metaInfo *MetaInfo) calculateInfoHash() error {
 	infoByteArray, err := json.Marshal(metaInfo.Info)
+
 	if err != nil {
 		return err
 	}
@@ -89,6 +96,30 @@ func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
 	}
 
 	return &metaInfo, nil
+}
+
+func (metaInfo *MetaInfo) Encode() ([]byte, error) {
+	byteArray, err := json.Marshal(metaInfo)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metaInfoMap := make(map[string]any)
+
+	err = json.Unmarshal(byteArray, &metaInfoMap)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("%v", metaInfoMap)
+
+	bencoded, err := bencode.Encode(metaInfoMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte(bencoded), nil
 }
 
 func (metaInfo *MetaInfo) GetInfoHash() []byte {

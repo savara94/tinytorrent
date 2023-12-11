@@ -1,6 +1,7 @@
 package torrent
 
 import (
+	"encoding/hex"
 	"os"
 	"testing"
 )
@@ -14,13 +15,14 @@ type testCaseMetaInfo struct {
 	filePath  string
 	want      *metaInfoWant
 	wantedErr error
+	infoHash  string
 }
 
 func TestParseMetaInfo(t *testing.T) {
 	testCases := []testCaseMetaInfo{
-		{"examples/hello_world.torrent", &metaInfoWant{"http://localhost:6969/announce", "hello_world"}, nil},
-		{"examples/lovecraft.torrent", &metaInfoWant{"http://localhost:6969/announce", "sevenhplovecraftstories_pc_librivox"}, nil},
-		{"examples/missing_length_and_files.torrent", nil, ErrLengthAndFilesNotSpecified},
+		{"examples/hello_world.torrent", &metaInfoWant{"http://localhost:6969/announce", "hello_world"}, nil, "2af633c618e64c9ea3972789f5764fbea6f42d40"},
+		{"examples/lovecraft.torrent", &metaInfoWant{"http://localhost:6969/announce", "sevenhplovecraftstories_pc_librivox"}, nil, ""},
+		{"examples/missing_length_and_files.torrent", nil, ErrLengthAndFilesNotSpecified, ""},
 	}
 
 	for i := range testCases {
@@ -28,8 +30,10 @@ func TestParseMetaInfo(t *testing.T) {
 		filePath := testCase.filePath
 		wantedErr := testCase.wantedErr
 		want := testCase.want
+		wantedInfoHash := testCase.infoHash
 
 		reader, err := os.Open(filePath)
+		defer reader.Close()
 
 		if err != nil {
 			t.Errorf("%d Failed opening %s", i, filePath)
@@ -38,7 +42,7 @@ func TestParseMetaInfo(t *testing.T) {
 		gotInfo, gottenErr := ParseMetaInfo(reader)
 
 		if wantedErr == nil && gottenErr != nil {
-			t.Errorf("Got error %v, wasn't expecting one", gottenErr)
+			t.Errorf("%d Got error %v, wasn't expecting one", i, gottenErr)
 		}
 
 		if wantedErr != nil && gottenErr == nil {
@@ -55,6 +59,27 @@ func TestParseMetaInfo(t *testing.T) {
 			if want.name != gotInfo.Info.Name {
 				t.Errorf("wanted %s got %s", want.name, gotInfo.Info.Name)
 			}
+
+			if wantedInfoHash != "" {
+				infoHashHexString := infoHashToHexString(gotInfo)
+				if wantedInfoHash != infoHashHexString {
+					t.Errorf("wanted %s got %s", wantedInfoHash, infoHashHexString)
+				}
+			}
+
+			bencoded, err := gotInfo.Encode()
+
+			if err != nil {
+				t.Errorf("%v", err)
+			}
+			os.WriteFile(filePath+"_test.torrent", bencoded, 0644)
+			t.Logf("%d", len(gotInfo.Info.Pieces))
 		}
+
 	}
+}
+
+func infoHashToHexString(metaInfo *MetaInfo) string {
+	infoHash := metaInfo.GetInfoHash()
+	return hex.EncodeToString(infoHash)
 }

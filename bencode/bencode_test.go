@@ -89,6 +89,102 @@ func TestDecode(t *testing.T) {
 	runTestCases("complex", complexTestCases, t, sliceCmp)
 }
 
+func TestUnmarshal(t *testing.T) {
+	intTestCases := []struct {
+		input   any
+		want    int
+		wantErr bool
+	}{
+		{123, 123, false},
+		{-123, -123, false},
+		{"pwd", 0, true},
+		{make([]any, 1), 0, true},
+		{make(map[string]any), 0, true},
+	}
+
+	for i := range intTestCases {
+		input := intTestCases[i].input
+		wantErr := intTestCases[i].wantErr
+
+		var a int
+
+		err := Unmarshal(input, &a)
+
+		if err == nil && !wantErr {
+			if input != a {
+				t.Errorf("wanted %v, got %v", input, a)
+			}
+		}
+
+		if err != nil && !wantErr {
+			t.Errorf("did not expect error %v", err)
+		}
+	}
+
+	stringTestCases := []struct {
+		input   any
+		wantErr bool
+	}{
+		{"123", false},
+		{-123, true},
+		{"pwd", false},
+		{make([]any, 1), true},
+		{make(map[string]any), true},
+	}
+
+	for i := range stringTestCases {
+		input := stringTestCases[i].input
+		want := stringTestCases[i].input
+		wantErr := stringTestCases[i].wantErr
+
+		var a string
+
+		err := Unmarshal(input, &a)
+
+		if err == nil && !wantErr {
+			if want != a {
+				t.Errorf("wanted %v, got %v", want, a)
+			}
+		}
+
+		if err != nil && !wantErr {
+			t.Errorf("did not expect error %v", err)
+		}
+	}
+
+	listInt := []int{1, 2, 3}
+	var targetListInt []int
+
+	err := Unmarshal(toSliceOfAny(listInt), &targetListInt)
+	if err != nil {
+		t.Errorf("Not expected error %v", err)
+	} else {
+		if !reflect.DeepEqual(listInt, targetListInt) {
+			t.Errorf("Not equal %v and %v", listInt, targetListInt)
+		}
+	}
+
+	listString := []string{"a", "b", "c"}
+	var targetListString []string
+
+	err = Unmarshal(toSliceOfAny(listString), &targetListString)
+	if err != nil {
+		t.Errorf("Not expected error %v", err)
+	} else {
+		if !reflect.DeepEqual(listString, targetListString) {
+			t.Errorf("Not equal %v and %v", listString, targetListString)
+		}
+	}
+}
+
+func toSliceOfAny[T any](s []T) []any {
+	result := make([]any, len(s))
+	for i, v := range s {
+		result[i] = v
+	}
+	return result
+}
+
 func TestEncode(t *testing.T) {
 	testCases := []struct {
 		input       any
