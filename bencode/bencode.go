@@ -419,6 +419,12 @@ func assignSlice(source any, v any) error {
 
 	for i := range slice {
 		element := targetSlice.Index(i).Addr().Interface()
+
+		if targetType.Elem() != reflect.TypeOf(slice[i]) {
+			errMsg := fmt.Sprintf("Target type %v does not match with type of element %d %v", targetType.Elem(), i, reflect.TypeOf(slice[i]))
+			return errors.New(errMsg)
+		}
+
 		assignBasicToComplex(slice[i], element)
 	}
 
@@ -447,7 +453,7 @@ func assignBasicToComplex(source any, v any) error {
 		// Handle pointer to pointer
 		pointingType := reflect.TypeOf(v).Elem()
 		target := reflect.New(pointingType.Elem())
-		// fmt.Printf("%v %v %v", pointingType, pointingType.Elem(), target)
+
 		err = assignBasicToComplex(source, target.Interface())
 
 		if err != nil {
