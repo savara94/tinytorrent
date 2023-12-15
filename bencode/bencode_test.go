@@ -1,7 +1,7 @@
 package bencode
 
 import (
-	"encoding/json"
+	"bytes"
 	"io"
 	"reflect"
 	"strings"
@@ -10,18 +10,22 @@ import (
 
 type testCase struct {
 	name      string
-	input     string
+	input     any
 	want      any
 	wantedErr error
 	extras    any
 }
 
-type decoderAsserterFn func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error)
+type testCaseAsserterFn func(testCase *testCase, t *testing.T) (any, error)
 
-func noDecoderTypeCheckingAssert(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
+func decoderAssert[T any](testCase *testCase, t *testing.T) (any, error) {
 	t.Helper()
 
-	var got any
+	input := testCase.input.(string)
+	reader := strings.NewReader(input)
+	decoder := NewDecoder(reader)
+
+	var got T
 	want := testCase.want
 	name := testCase.name
 
@@ -36,6 +40,28 @@ func noDecoderTypeCheckingAssert(decoder *Decoder, testCase *testCase, t *testin
 	return got, err
 }
 
+func encoderAssert[T any](testCase *testCase, t *testing.T) (any, error) {
+	t.Helper()
+
+	var b bytes.Buffer
+	input := testCase.input.(T)
+	writer := io.Writer(&b)
+
+	encoder := NewEncoder(writer)
+	err := encoder.Encode(input)
+
+	if err == nil {
+		got := string(b.Bytes())
+		want := testCase.want.(string)
+
+		if got != want {
+			t.Errorf("name %s: got %v want %v", testCase.name, got, want)
+		}
+	}
+
+	return nil, err
+}
+
 func makePointerTo[T any](value T) *T {
 	ptr := new(T)
 	*ptr = value
@@ -44,22 +70,22 @@ func makePointerTo[T any](value T) *T {
 }
 
 func TestDecode(t *testing.T) {
-	testGeneral(t)
-	testNumbers(t)
-	testStrings(t)
-	testLists(t)
-	testDicts(t)
+	testGeneralDecode(t)
+	testNumbersDecode(t)
+	testStringsDecode(t)
+	testListsDecode(t)
+	testDictsDecode(t)
 }
 
-func testGeneral(t *testing.T) {
+func testGeneralDecode(t *testing.T) {
 	generalTestCases := []testCase{
 		{"No valid delimiter", "psa", nil, io.EOF, nil},
 	}
 
-	runTestCases(generalTestCases, noDecoderTypeCheckingAssert, t)
+	runTestCases(generalTestCases, decoderAssert[any], t)
 }
 
-func testNumbers(t *testing.T) {
+func testNumbersDecode(t *testing.T) {
 	numberTestCases := []testCase{
 		{"1st number", "i45e", 45, nil, nil},
 		{"2nd number", "i567e", 567, nil, nil},
@@ -68,26 +94,10 @@ func testNumbers(t *testing.T) {
 		{"Missing number terminator", "i456", nil, io.EOF, nil},
 	}
 
-	runTestCases(numberTestCases, noDecoderTypeCheckingAssert, t)
-
-	intTypeCheckingAssert := func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
-		var got int
-
-		err := decoder.Decode(&got)
-
-		if err == nil {
-			if got != testCase.want {
-				t.Errorf("%s got %d want %d", testCase.name, got, testCase.want)
-			}
-		}
-
-		return got, err
-	}
-
-	runTestCases(numberTestCases, intTypeCheckingAssert, t)
+	runTestCases(numberTestCases, decoderAssert[int], t)
 }
 
-func testStrings(t *testing.T) {
+func testStringsDecode(t *testing.T) {
 	stringTestCases := []testCase{
 		{"1st string", "3:ben", "ben", nil, nil},
 		// Less characters than specified
@@ -99,26 +109,10 @@ func testStrings(t *testing.T) {
 		{"5th string", "1:a", "a", nil, nil},
 	}
 
-	runTestCases(stringTestCases, noDecoderTypeCheckingAssert, t)
-
-	stringTypeCheck := func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
-		var got string
-
-		err := decoder.Decode(&got)
-
-		if err == nil {
-			if got != testCase.want {
-				t.Errorf("%s got %s want %s", testCase.name, got, testCase.want)
-			}
-		}
-
-		return got, err
-	}
-
-	runTestCases(stringTestCases, stringTypeCheck, t)
+	runTestCases(stringTestCases, decoderAssert[string], t)
 }
 
-func testLists(t *testing.T) {
+func testListsDecode(t *testing.T) {
 	listTestCases := []testCase{
 		{"1st list", "l3:ben2:goe", []any{"ben", "go"}, nil, nil},
 		{"2nd list", "l3:beni56ee", []any{"ben", 56}, nil, nil},
@@ -127,50 +121,22 @@ func testLists(t *testing.T) {
 		{"Missing end of list", "l", nil, io.EOF, nil},
 	}
 
-	runTestCases(listTestCases, noDecoderTypeCheckingAssert, t)
+	runTestCases(listTestCases, decoderAssert[any], t)
 
 	intListTypeCheckingCases := []testCase{
 		{"int list", "li1ei2ei3ee", []int{1, 2, 3}, nil, nil},
 	}
 
-	intListTypeCheckingAssert := func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
-		var got []int
-
-		err := decoder.Decode(&got)
-
-		if err == nil {
-			if !reflect.DeepEqual(got, testCase.want) {
-				t.Errorf("got %v wanted %v", got, testCase.want)
-			}
-		}
-
-		return got, err
-	}
-
-	runTestCases(intListTypeCheckingCases, intListTypeCheckingAssert, t)
+	runTestCases(intListTypeCheckingCases, decoderAssert[[]int], t)
 
 	stringListTypeCheckingCases := []testCase{
 		{"string list", "l3:ben3:ken4:gwene", []string{"ben", "ken", "gwen"}, nil, nil},
 	}
 
-	stringListTypeCheckingAssert := func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
-		var got []string
-
-		err := decoder.Decode(&got)
-
-		if err == nil {
-			if !reflect.DeepEqual(got, testCase.want) {
-				t.Errorf("got %v wanted %v", got, testCase.want)
-			}
-		}
-
-		return got, err
-	}
-
-	runTestCases(stringListTypeCheckingCases, stringListTypeCheckingAssert, t)
+	runTestCases(stringListTypeCheckingCases, decoderAssert[[]string], t)
 }
 
-func testDicts(t *testing.T) {
+func testDictsDecode(t *testing.T) {
 	dictTestCases := []testCase{
 		{"1st dict", "d3:ben2:goe", map[string]any{"ben": "go"}, nil, nil},
 		{"2nd dict", "d3:beni56ee", map[string]any{"ben": 56}, nil, nil},
@@ -179,7 +145,7 @@ func testDicts(t *testing.T) {
 		{"Missing dict terminator", "d", nil, io.EOF, nil},
 	}
 
-	runTestCases(dictTestCases, noDecoderTypeCheckingAssert, t)
+	runTestCases(dictTestCases, decoderAssert[map[string]any], t)
 
 	type MatchingStructExample struct {
 		Ben      string `bencode:"ben"`
@@ -189,83 +155,61 @@ func testDicts(t *testing.T) {
 	}
 
 	structAssignmentCases := []testCase{
-		{"1st struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valueee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil}, nil, nil},
-		{"2nd struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, makePointerTo(5)}, nil, nil},
+		{"1st struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valueee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil}, nil, nil},
+		{"2nd struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, makePointerTo(5)}, nil, nil},
 	}
 
-	runTestCases(structAssignmentCases, func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
-		var got MatchingStructExample
-
-		err := decoder.Decode(&got)
-
-		if err == nil {
-			gotJson, _ := json.Marshal(got)
-			wantJson, _ := json.Marshal(testCase.want)
-
-			if !reflect.DeepEqual(gotJson, wantJson) {
-				t.Errorf("%s got %v want %v", testCase.name, string(gotJson), string(wantJson))
-			}
-		}
-
-		return got, err
-	}, t)
+	runTestCases(structAssignmentCases, decoderAssert[MatchingStructExample], t)
 }
 
-// func TestUnmarshal(t *testing.T) {
+func TestEncode(t *testing.T) {
+	testIntEncode(t)
+	testStringEncode(t)
+	testListEncode(t)
+	testDictEncode(t)
+}
 
-// func TestEncode(t *testing.T) {
-// 	testCases := []struct {
-// 		input       any
-// 		want        string
-// 		wantedError error
-// 	}{
-// 		{123, "i123e", nil},
-// 		{0, "i0e", nil},
-// 		{-123, "i-123e", nil},
-// 		{"ben", "3:ben", nil},
-// 		{"", "0:", nil},
-// 		{[]any{0, "ben"}, "li0e3:bene", nil},
-// 		{map[string]any{"ben": 123, "ken": []any{}}, "d3:beni123e3:kenlee", nil},
-// 	}
+func testIntEncode(t *testing.T) {
+	testCases := []testCase{
+		{"1st number encode", 123, "i123e", nil, nil},
+		{"2nd number encode", 0, "i0e", nil, nil},
+		{"3rd number encode", -123, "i-123e", nil, nil},
+	}
+	runTestCases(testCases, encoderAssert[int], t)
+}
 
-// 	for i, testCase := range testCases {
-// 		input := testCase.input
-// 		want := testCase.want
-// 		wantedError := testCase.wantedError
+func testStringEncode(t *testing.T) {
+	testCases := []testCase{
+		{"1st string encode", "ben", "3:ben", nil, nil},
+		{"2nd string encode", "", "0:", nil, nil},
+	}
+	runTestCases(testCases, encoderAssert[string], t)
+}
 
-// 		got, gottenErr := Encode(input)
+func testListEncode(t *testing.T) {
+	testCases := []testCase{
+		{"1st list encode", []any{0, "ben"}, "li0e3:bene", nil, nil},
+	}
+	runTestCases(testCases, encoderAssert[[]any], t)
+}
 
-// 		if wantedError != nil && gottenErr == nil {
-// 			t.Errorf("wanted %v got nil", wantedError)
-// 		}
+func testDictEncode(t *testing.T) {
+	testCases := []testCase{
+		{"1st dict encode", map[string]any{"ben": 123, "ken": []any{}}, "d3:beni123e3:kenlee", nil, nil},
+	}
+	runTestCases(testCases, encoderAssert[map[string]any], t)
+}
 
-// 		if wantedError == nil && gottenErr != nil {
-// 			t.Errorf("%d not expected error but got %v", i, gottenErr)
-// 		}
+func runTestCases(testCases []testCase, testCaseAsserter testCaseAsserterFn, t *testing.T) {
+	t.Helper()
 
-// 		if wantedError != nil && gottenErr != nil {
-// 			if wantedError != gottenErr {
-// 				t.Errorf("got %v expected %v", gottenErr, wantedError)
-// 			}
-// 		}
-
-// 		if got != want {
-// 			t.Errorf("wanted %v got %v", want, got)
-// 		}
-// 	}
-// }
-
-func runTestCases(testCases []testCase, assertDecoder decoderAsserterFn, t *testing.T) {
 	for i := range testCases {
 		testCase := testCases[i]
 
-		reader := strings.NewReader(testCase.input)
 		wantedErr := testCase.wantedErr
 		name := testCase.name
 
-		decoder := NewDecoder(reader)
-
-		_, err := assertDecoder(decoder, &testCase, t)
+		_, err := testCaseAsserter(&testCase, t)
 		assertError(name, wantedErr, err, t)
 	}
 }
