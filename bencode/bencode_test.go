@@ -13,6 +13,7 @@ type testCase struct {
 	input     string
 	want      any
 	wantedErr error
+	extras    any
 }
 
 type decoderAsserterFn func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error)
@@ -45,7 +46,7 @@ func TestDecode(t *testing.T) {
 
 func testGeneral(t *testing.T) {
 	generalTestCases := []testCase{
-		{"No valid delimiter", "psa", nil, io.EOF},
+		{"No valid delimiter", "psa", nil, io.EOF, nil},
 	}
 
 	runTestCases(generalTestCases, noDecoderTypeCheckingAssert, t)
@@ -53,11 +54,11 @@ func testGeneral(t *testing.T) {
 
 func testNumbers(t *testing.T) {
 	numberTestCases := []testCase{
-		{"1st number", "i45e", 45, nil},
-		{"2nd number", "i567e", 567, nil},
-		{"3rd number", "i-45e", -45, nil},
-		{"Missing number case", "ie", nil, ErrExpectedNumber},
-		{"Missing number terminator", "i456", nil, io.EOF},
+		{"1st number", "i45e", 45, nil, nil},
+		{"2nd number", "i567e", 567, nil, nil},
+		{"3rd number", "i-45e", -45, nil, nil},
+		{"Missing number case", "ie", nil, ErrExpectedNumber, nil},
+		{"Missing number terminator", "i456", nil, io.EOF, nil},
 	}
 
 	runTestCases(numberTestCases, noDecoderTypeCheckingAssert, t)
@@ -81,14 +82,14 @@ func testNumbers(t *testing.T) {
 
 func testStrings(t *testing.T) {
 	stringTestCases := []testCase{
-		{"1st string", "3:ben", "ben", nil},
+		{"1st string", "3:ben", "ben", nil, nil},
 		// Less characters than specified
-		{"2nd string", "4:ben", nil, ErrEndOfReader},
+		{"2nd string", "4:ben", nil, ErrEndOfReader, nil},
 		// More characters than specified
-		{"3rd string", "2:ben", "be", nil},
+		{"3rd string", "2:ben", "be", nil, nil},
 		// 0 characters specified
-		{"4th string", "0:", "", nil},
-		{"5th string", "1:a", "a", nil},
+		{"4th string", "0:", "", nil, nil},
+		{"5th string", "1:a", "a", nil, nil},
 	}
 
 	runTestCases(stringTestCases, noDecoderTypeCheckingAssert, t)
@@ -112,17 +113,17 @@ func testStrings(t *testing.T) {
 
 func testLists(t *testing.T) {
 	listTestCases := []testCase{
-		{"1st list", "l3:ben2:goe", []any{"ben", "go"}, nil},
-		{"2nd list", "l3:beni56ee", []any{"ben", 56}, nil},
-		{"Empty list", "le", []any{}, nil},
-		{"Nested lists", "llelleei0ee", []any{[]any{}, []any{[]any{}}, 0}, nil},
-		{"Missing end of list", "l", nil, io.EOF},
+		{"1st list", "l3:ben2:goe", []any{"ben", "go"}, nil, nil},
+		{"2nd list", "l3:beni56ee", []any{"ben", 56}, nil, nil},
+		{"Empty list", "le", []any{}, nil, nil},
+		{"Nested lists", "llelleei0ee", []any{[]any{}, []any{[]any{}}, 0}, nil, nil},
+		{"Missing end of list", "l", nil, io.EOF, nil},
 	}
 
 	runTestCases(listTestCases, noDecoderTypeCheckingAssert, t)
 
 	intListTypeCheckingCases := []testCase{
-		{"int list", "li1ei2ei3ee", []int{1, 2, 3}, nil},
+		{"int list", "li1ei2ei3ee", []int{1, 2, 3}, nil, nil},
 	}
 
 	intListTypeCheckingAssert := func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
@@ -142,7 +143,7 @@ func testLists(t *testing.T) {
 	runTestCases(intListTypeCheckingCases, intListTypeCheckingAssert, t)
 
 	stringListTypeCheckingCases := []testCase{
-		{"string list", "l3:ben3:ken4:gwene", []string{"ben", "ken", "gwen"}, nil},
+		{"string list", "l3:ben3:ken4:gwene", []string{"ben", "ken", "gwen"}, nil, nil},
 	}
 
 	stringListTypeCheckingAssert := func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
@@ -164,11 +165,11 @@ func testLists(t *testing.T) {
 
 func testDicts(t *testing.T) {
 	dictTestCases := []testCase{
-		{"1st dict", "d3:ben2:goe", map[string]any{"ben": "go"}, nil},
-		{"2nd dict", "d3:beni56ee", map[string]any{"ben": 56}, nil},
-		{"Empty dict", "de", map[string]any{}, nil},
-		{"Nested dicts", "d3:bend3:ben3:kenee", map[string]any{"ben": map[string]any{"ben": "ken"}}, nil},
-		{"Missing dict terminator", "d", nil, io.EOF},
+		{"1st dict", "d3:ben2:goe", map[string]any{"ben": "go"}, nil, nil},
+		{"2nd dict", "d3:beni56ee", map[string]any{"ben": 56}, nil, nil},
+		{"Empty dict", "de", map[string]any{}, nil, nil},
+		{"Nested dicts", "d3:bend3:ben3:kenee", map[string]any{"ben": map[string]any{"ben": "ken"}}, nil, nil},
+		{"Missing dict terminator", "d", nil, io.EOF, nil},
 	}
 
 	runTestCases(dictTestCases, noDecoderTypeCheckingAssert, t)
@@ -181,8 +182,8 @@ func testDicts(t *testing.T) {
 	}
 
 	structAssignmentCases := []testCase{
-		{"1st struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valueee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil}, nil},
-		{"2nd struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, new(int)}, nil},
+		{"1st struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valueee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil}, nil, nil},
+		{"2nd struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, new(int)}, nil, nil},
 	}
 
 	runTestCases(structAssignmentCases, func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
