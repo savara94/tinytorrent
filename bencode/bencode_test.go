@@ -36,6 +36,13 @@ func noDecoderTypeCheckingAssert(decoder *Decoder, testCase *testCase, t *testin
 	return got, err
 }
 
+func makePointerTo[T any](value T) *T {
+	ptr := new(T)
+	*ptr = value
+
+	return ptr
+}
+
 func TestDecode(t *testing.T) {
 	testGeneral(t)
 	testNumbers(t)
@@ -183,7 +190,7 @@ func testDicts(t *testing.T) {
 
 	structAssignmentCases := []testCase{
 		{"1st struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valueee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil}, nil, nil},
-		{"2nd struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, new(int)}, nil, nil},
+		{"2nd struct", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, makePointerTo(5)}, nil, nil},
 	}
 
 	runTestCases(structAssignmentCases, func(decoder *Decoder, testCase *testCase, t *testing.T) (any, error) {
