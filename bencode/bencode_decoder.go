@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
-	"math"
 	"reflect"
-	"sort"
 	"strconv"
 	"unicode/utf8"
 )
@@ -29,31 +26,6 @@ type Decoder struct {
 
 func NewDecoder(reader io.Reader) *Decoder {
 	return &Decoder{reader, 0}
-}
-
-func (decoder *Decoder) readBytes(numBytes int) ([]byte, error) {
-	bytes := make([]byte, numBytes)
-
-	n, err := decoder.reader.Read(bytes)
-
-	decoder.bytesRead += n
-
-	if err != nil {
-		return nil, err
-	}
-
-	if n < numBytes {
-		return nil, ErrEndOfReader
-	}
-
-	return bytes, nil
-}
-
-func isPointerToEmptyInterface(v any) bool {
-	var sliceOfEmptyInterface []interface{}
-
-	pointerType := reflect.TypeOf(v).Elem()
-	return pointerType == reflect.TypeOf(sliceOfEmptyInterface).Elem()
 }
 
 func (decoder *Decoder) Decode(v any) error {
@@ -83,6 +55,31 @@ func Unmarshal(data []byte, v any) error {
 	decoder := NewDecoder(reader)
 
 	return decoder.Decode(v)
+}
+
+func (decoder *Decoder) readBytes(numBytes int) ([]byte, error) {
+	bytes := make([]byte, numBytes)
+
+	n, err := decoder.reader.Read(bytes)
+
+	decoder.bytesRead += n
+
+	if err != nil {
+		return nil, err
+	}
+
+	if n < numBytes {
+		return nil, ErrEndOfReader
+	}
+
+	return bytes, nil
+}
+
+func isPointerToEmptyInterface(v any) bool {
+	var sliceOfEmptyInterface []interface{}
+
+	pointerType := reflect.TypeOf(v).Elem()
+	return pointerType == reflect.TypeOf(sliceOfEmptyInterface).Elem()
 }
 
 func (decoder *Decoder) decodeDict() (map[string]any, error) {
@@ -242,64 +239,6 @@ func (decoder *Decoder) decodeDelimiter(delimiter byte) (any, error) {
 	}
 }
 
-func encodeNumber(number int) (string, error) {
-	encoded := "i" + strconv.Itoa(number) + "e"
-	return encoded, nil
-}
-
-func encodeString(str string) (string, error) {
-	length := len(str)
-	encoded := strconv.Itoa(length) + ":" + str
-	return encoded, nil
-}
-
-func encodeList(list []any) (string, error) {
-	encoded := ""
-
-	for i := range list {
-		encodedElement, err := Encode(list[i])
-
-		if err != nil {
-			return "", err
-		}
-
-		encoded += encodedElement
-	}
-
-	encoded = "l" + encoded + "e"
-	return encoded, nil
-}
-
-func encodeDict(dict map[string]any) (string, error) {
-	encoded := ""
-
-	// Keys should be encoded in sorted order.
-	keys := make([]string, 0, len(dict))
-	for k := range dict {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	for i := range keys {
-		encodedKey, err := Encode(keys[i])
-		if err != nil {
-			return "", err
-		}
-
-		value := dict[keys[i]]
-		encodedValue, err := Encode(value)
-		if err != nil {
-			return "", err
-		}
-
-		encoded += encodedKey + encodedValue
-	}
-
-	encoded = "d" + encoded + "e"
-	return encoded, nil
-}
-
 func (decoder *Decoder) decodeToBasicTypes() (any, error) {
 	bytes, err := decoder.readBytes(1)
 
@@ -433,6 +372,33 @@ func assignSlice(source any, v any) error {
 	return nil
 }
 
+func assignDictionary(source any, v any) error {
+	sourceDict, ok := source.(map[string]any)
+
+	if !ok {
+		return errors.New("Source not map[string]any")
+	}
+
+	newDict := make(map[string]any)
+
+	for key := range sourceDict {
+		valueType := reflect.TypeOf(sourceDict[key])
+		value := reflect.New(valueType)
+
+		assignBasicToComplex(sourceDict[key], value.Interface())
+		newDict[key] = value.Elem().Interface()
+	}
+
+	dictPtr, ok := v.(*map[string]any)
+	if !ok {
+		return errors.New("v is not map[string]any")
+	}
+
+	*dictPtr = newDict
+
+	return nil
+}
+
 func assignBasicToComplex(source any, v any) error {
 	var err error
 
@@ -448,6 +414,9 @@ func assignBasicToComplex(source any, v any) error {
 		break
 	case reflect.String:
 		err = assignString(source, v)
+		break
+	case reflect.Map:
+		err = assignDictionary(source, v)
 		break
 	case reflect.Pointer:
 		// Handle pointer to pointer
@@ -466,25 +435,4 @@ func assignBasicToComplex(source any, v any) error {
 	}
 
 	return err
-}
-
-func Encode(object any) (string, error) {
-	switch casted := object.(type) {
-	case int:
-		return encodeNumber(casted)
-	case float64:
-		// Check if no data loss occurred
-		return encodeNumber(int(math.Round(casted)))
-	case string:
-		return encodeString(casted)
-	case []any:
-		return encodeList(casted)
-	case map[string]any:
-		return encodeDict(casted)
-	case nil:
-		return "", nil
-	default:
-		log.Printf("Not supported type %T", object)
-		return "", ErrNotSupportedType
-	}
 }
