@@ -7,7 +7,6 @@ import (
 	"io"
 	"reflect"
 	"strconv"
-	"unicode/utf8"
 )
 
 var ErrEndOfReader = errors.New("end of reader reached")
@@ -231,11 +230,7 @@ func (decoder *Decoder) decodeDelimiter(delimiter byte) (any, error) {
 			return nil, err
 		}
 
-		if utf8.ValidString(byteString) {
-			return byteString, nil
-		}
-
-		return []byte(byteString), nil
+		return byteString, nil
 	}
 }
 
@@ -257,9 +252,13 @@ func (decoder *Decoder) decodeToBasicTypes() (any, error) {
 }
 
 func getStructFields(v any) map[string]reflect.StructField {
-	typeOfStruct := reflect.TypeOf(v).Elem()
-	fields := make([]string, typeOfStruct.NumField())
+	typeOfStruct := reflect.TypeOf(v)
 
+	if reflect.TypeOf(v).Kind() == reflect.Pointer {
+		typeOfStruct = reflect.TypeOf(v).Elem()
+	}
+
+	fields := make([]string, typeOfStruct.NumField())
 	fieldMap := make(map[string]reflect.StructField)
 
 	for i := range fields {
@@ -314,57 +313,30 @@ func assignStruct(source any, v any) error {
 			continue
 		}
 
-		assignBasicToComplex(sourceValue, target)
+		err := assignBasicToComplex(sourceValue, target)
+		if err != nil {
+			return err
+		}
 	}
-
-	return nil
-}
-
-func assignInt(source any, v any) error {
-	number, ok := source.(int)
-
-	if !ok {
-		return errors.New(fmt.Sprintf("Source %v %T not int", source, source))
-	}
-
-	target := reflect.ValueOf(v).Interface().(*int)
-	*target = number
-
-	return nil
-}
-
-func assignString(source any, v any) error {
-	str, ok := source.(string)
-
-	if !ok {
-		return errors.New("Source not string")
-	}
-
-	target := reflect.ValueOf(v).Interface().(*string)
-	*target = str
 
 	return nil
 }
 
 func assignSlice(source any, v any) error {
-	slice, ok := source.([]any)
-
-	if !ok {
-		return errors.New("Source not slice of any")
-	}
+	slice := reflect.ValueOf(source)
 
 	targetType := reflect.TypeOf(v).Elem()
-	targetSlice := reflect.MakeSlice(targetType, len(slice), len(slice))
+	targetSlice := reflect.MakeSlice(targetType, slice.Len(), slice.Cap())
 
-	for i := range slice {
+	for i := 0; i < slice.Len(); i++ {
 		element := targetSlice.Index(i).Addr().Interface()
 
-		if targetType.Elem() != reflect.TypeOf(slice[i]) {
-			errMsg := fmt.Sprintf("Target type %v does not match with type of element %d %v", targetType.Elem(), i, reflect.TypeOf(slice[i]))
+		if slice.Index(i).Type().AssignableTo(targetType) {
+			errMsg := fmt.Sprintf("Target type %v cannot be assigned from source %d %v", targetType, i, slice.Index(i).Type())
 			return errors.New(errMsg)
 		}
 
-		assignBasicToComplex(slice[i], element)
+		assignBasicToComplex(slice.Index(i).Interface(), element)
 	}
 
 	reflect.ValueOf(v).Elem().Set(targetSlice)
@@ -409,12 +381,6 @@ func assignBasicToComplex(source any, v any) error {
 	case reflect.Slice:
 		err = assignSlice(source, v)
 		break
-	case reflect.Int:
-		err = assignInt(source, v)
-		break
-	case reflect.String:
-		err = assignString(source, v)
-		break
 	case reflect.Map:
 		err = assignDictionary(source, v)
 		break
@@ -431,7 +397,11 @@ func assignBasicToComplex(source any, v any) error {
 
 		reflect.ValueOf(v).Elem().Set(target)
 	default:
-		return errors.New(fmt.Sprintf("%v not supported", kind))
+		sourceValue := reflect.ValueOf(source)
+		targetValue := reflect.ValueOf(v)
+
+		targetValue.Elem().Set(sourceValue)
+		// reflect.ValueOf(v).Elem().Set(source)
 	}
 
 	return err
