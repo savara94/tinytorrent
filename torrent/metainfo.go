@@ -2,64 +2,63 @@ package torrent
 
 import (
 	"crypto/sha1"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 
 	"example.com/bencode"
 )
 
 type FileInfo struct {
-	Length int      `json:"length"`
-	Path   []string `json:"path"`
+	Length int      `bencode:"length"`
+	Path   []string `bencode:"path"`
 }
 
 type GeneralInfo struct {
-	Name        string      `json:"name"`
-	PieceLength int         `json:"piece length"`
-	Pieces      []byte      `json:"pieces"`
-	Length      *int        `json:"length,omitempty"`
-	Files       *[]FileInfo `json:"files,omitempty"`
-	Private     *int        `json:"private,omitempty"`
+	Name        string      `bencode:"name"`
+	PieceLength int         `bencode:"piece length"`
+	Pieces      string      `bencode:"pieces"`
+	Length      *int        `bencode:"length"`
+	Files       *[]FileInfo `bencode:"files"`
+	Private     *int        `bencode:"private"`
 }
 
 type MetaInfo struct {
-	Announce     string      `json:"announce"`
-	Comment      string      `json:"comment"`
-	CreatedBy    string      `json:"created by"`
-	CreationDate int         `json:"creation date"`
-	Encoding     string      `json:"encoding"`
-	Info         GeneralInfo `json:"info"`
-	infoHash     []byte
+	Announce     string      `bencode:"announce"`
+	Comment      string      `bencode:"comment"`
+	CreatedBy    string      `bencode:"created by"`
+	CreationDate int         `bencode:"creation date"`
+	Info         GeneralInfo `bencode:"info"`
+
+	infoHash []byte
+	rawBytes []byte
 }
 
 var ErrLengthAndFilesNotSpecified = errors.New("either length or files must be specified")
 
 func (metaInfo *MetaInfo) calculateInfoHash() error {
-	infoByteArray, err := json.Marshal(metaInfo.Info)
+	var anyMap map[string]any
 
+	err := bencode.Unmarshal(metaInfo.rawBytes, &anyMap)
 	if err != nil {
 		return err
 	}
 
-	infoMap := make(map[string]any)
-	err = json.Unmarshal(infoByteArray, &infoMap)
-	if err != nil {
-		return err
-	}
-
-	bencoded, err := bencode.Encode(infoMap)
+	// Use any map to marshal all stuff that is not part of BEP specification
+	infoBencodedBytes, err := bencode.Marshal(anyMap["info"])
 	if err != nil {
 		return err
 	}
 
 	h := sha1.New()
 
-	n, err := io.WriteString(h, bencoded)
+	n, err := h.Write(infoBencodedBytes)
 
-	if err != nil || n != len(bencoded) {
+	if err != nil {
 		return err
+	}
+
+	if n != len(infoBencodedBytes) {
+		// panic here
 	}
 
 	metaInfo.infoHash = h.Sum(nil)
@@ -68,20 +67,13 @@ func (metaInfo *MetaInfo) calculateInfoHash() error {
 }
 
 func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
-	bencode, err := bencode.Decode(reader)
-
+	bytes, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	bytes, err := json.Marshal(bencode)
-
-	if err != nil {
-		return nil, err
-	}
-
-	metaInfo := MetaInfo{}
-	err = json.Unmarshal(bytes, &metaInfo)
+	var metaInfo MetaInfo
+	err = bencode.Unmarshal(bytes, &metaInfo)
 
 	if err != nil {
 		return nil, err
@@ -91,35 +83,13 @@ func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
 		return nil, ErrLengthAndFilesNotSpecified
 	}
 
+	metaInfo.rawBytes = bytes
+
 	if err := metaInfo.calculateInfoHash(); err != nil {
 		return nil, err
 	}
 
 	return &metaInfo, nil
-}
-
-func (metaInfo *MetaInfo) Encode() ([]byte, error) {
-	byteArray, err := json.Marshal(metaInfo)
-
-	if err != nil {
-		return nil, err
-	}
-
-	metaInfoMap := make(map[string]any)
-
-	err = json.Unmarshal(byteArray, &metaInfoMap)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Printf("%v", metaInfoMap)
-
-	bencoded, err := bencode.Encode(metaInfoMap)
-	if err != nil {
-		return nil, err
-	}
-
-	return []byte(bencoded), nil
 }
 
 func (metaInfo *MetaInfo) GetInfoHash() []byte {
