@@ -147,16 +147,22 @@ func testDictsDecode(t *testing.T) {
 
 	runTestCases(dictTestCases, decoderAssert[map[string]any], t)
 
+	type InnerStructExample struct {
+		X string `bencode:"x"`
+		Y *int   `bencode:"y"`
+	}
 	type MatchingStructExample struct {
-		Ben      string `bencode:"ben"`
-		Number   int    `bencode:"number"`
-		List     []int  `bencode:"list"`
-		Nullable *int   `bencode:"nullable"`
+		Ben      string              `bencode:"ben"`
+		Number   int                 `bencode:"number"`
+		List     []int               `bencode:"list"`
+		Nullable *int                `bencode:"nullable"`
+		Inner    *InnerStructExample `bencode:"inner"`
 	}
 
 	structAssignmentCases := []testCase{
-		{"1st struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valueee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil}, nil, nil},
-		{"2nd struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee6:nestedd3:key5:valuee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, makePointerTo(5)}, nil, nil},
+		{"1st struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3eee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil, nil}, nil, nil},
+		{"2nd struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee8:nullablei5ee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, makePointerTo(5), nil}, nil, nil},
+		{"3nd struct assignment", "d3:ben3:ken6:numberi3e4:listli1ei2ei3ee5:innerd1:x1:xee", MatchingStructExample{"ken", 3, []int{1, 2, 3}, nil, &InnerStructExample{"x", nil}}, nil, nil},
 	}
 
 	runTestCases(structAssignmentCases, decoderAssert[MatchingStructExample], t)
