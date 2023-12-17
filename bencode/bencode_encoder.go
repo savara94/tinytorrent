@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
+	"reflect"
 	"sort"
 	"strconv"
 )
@@ -19,22 +19,30 @@ func NewEncoder(writer io.Writer) *Encoder {
 }
 
 func Marshal(v any) ([]byte, error) {
-	switch casted := v.(type) {
-	case int:
-		return encodeNumber(casted)
-	case float64:
-		// Check if no data loss occurred
-		return encodeNumber(int(math.Round(casted)))
-	case string:
-		return encodeString(casted)
-	case []any:
-		return encodeList(casted)
-	case map[string]any:
-		return encodeDict(casted)
-	case nil:
-		return nil, nil
+	switch kind := reflect.TypeOf(v).Kind(); kind {
+	case reflect.Int:
+		num := v.(int)
+		return encodeNumber(num), nil
+	case reflect.String:
+		byteString := v.(string)
+		return encodeString(byteString), nil
+	case reflect.Slice:
+		return encodeList(v)
+	case reflect.Map:
+		dict := v.(map[string]any)
+		return encodeDict(dict)
+	case reflect.Struct:
+		return encodeStruct(v)
+	case reflect.Pointer:
+		pointerValue := reflect.ValueOf(v)
+		isNil := pointerValue.IsNil()
+		if isNil {
+			return []byte{}, nil
+		}
+
+		return Marshal(pointerValue.Elem().Interface())
 	default:
-		log.Printf("Not supported type %T", v)
+		log.Printf("Not supported kind %#v %#v", kind, v)
 		return nil, ErrNotSupportedType
 	}
 }
@@ -59,24 +67,27 @@ func (encoder *Encoder) Encode(v any) error {
 	return nil
 }
 
-func encodeNumber(number int) ([]byte, error) {
+func encodeNumber(number int) []byte {
 	encoded := "i" + strconv.Itoa(number) + "e"
 
-	return []byte(encoded), nil
+	return []byte(encoded)
 }
 
-func encodeString(str string) ([]byte, error) {
+func encodeString(str string) []byte {
 	length := len(str)
 	encoded := strconv.Itoa(length) + ":" + str
 
-	return []byte(encoded), nil
+	return []byte(encoded)
 }
 
-func encodeList(list []any) ([]byte, error) {
+func encodeList(list any) ([]byte, error) {
 	encoded := ""
 
-	for i := range list {
-		encodedElement, err := Marshal(list[i])
+	listValue := reflect.ValueOf(list)
+
+	for i := 0; i < listValue.Len(); i++ {
+		elementValue := listValue.Index(i).Interface()
+		encodedElement, err := Marshal(elementValue)
 
 		if err != nil {
 			return nil, err
@@ -114,6 +125,44 @@ func encodeDict(dict map[string]any) ([]byte, error) {
 		}
 
 		encoded += string(encodedKey) + string(encodedValue)
+	}
+
+	encoded = "d" + encoded + "e"
+
+	return []byte(encoded), nil
+}
+
+func encodeStruct(object any) ([]byte, error) {
+	encoded := ""
+
+	fieldMap := getStructFields(object)
+
+	keys := make([]string, 0, len(fieldMap))
+	for key := range fieldMap {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	for i := range keys {
+		encodedName := keys[i]
+		field := fieldMap[encodedName]
+
+		fieldValue := reflect.ValueOf(object).FieldByName(field.Name)
+
+		if fieldValue.Kind() == reflect.Pointer && fieldValue.IsNil() {
+			continue
+		}
+
+		encodedValue, err := Marshal(fieldValue.Interface())
+		if err != nil {
+			return nil, err
+		}
+
+		encodedKey := encodeString(encodedName)
+
+		encoded += string(encodedKey) + string(encodedValue)
+
 	}
 
 	encoded = "d" + encoded + "e"
