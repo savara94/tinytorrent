@@ -212,22 +212,22 @@ func runTestCases(testCases []testCase, testCaseAsserter testCaseAsserterFn, t *
 	for i := range testCases {
 		testCase := testCases[i]
 
-		wantedErr := testCase.wantedErr
-		name := testCase.name
-
 		_, err := testCaseAsserter(&testCase, t)
-		assertError(name, wantedErr, err, t)
+		assertError(err, &testCase, t)
 	}
 }
 
-func assertError(name string, wantedError, gottenError error, t *testing.T) {
+func assertError(err error, testCase *testCase, t *testing.T) {
 	t.Helper()
 
-	if wantedError != nil && gottenError != wantedError {
-		t.Errorf("name %s: got %v, wanted %v", name, gottenError, wantedError)
+	name := testCase.name
+	wantedError := testCase.wantedErr
+
+	if wantedError != nil && err != wantedError {
+		t.Errorf("name %s: got %v, wanted %v", name, err, wantedError)
 	}
 
-	if wantedError == nil && gottenError != nil {
-		t.Errorf("name %s: got %v wanted nil", name, gottenError)
+	if wantedError == nil && err != nil {
+		t.Errorf("name %s: got %v wanted nil", name, err)
 	}
 }
