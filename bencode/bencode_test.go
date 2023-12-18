@@ -212,8 +212,10 @@ func runTestCases(testCases []testCase, testCaseAsserter testCaseAsserterFn, t *
 	for i := range testCases {
 		testCase := testCases[i]
 
-		_, err := testCaseAsserter(&testCase, t)
-		assertError(err, &testCase, t)
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := testCaseAsserter(&testCase, t)
+			assertError(err, &testCase, t)
+		})
 	}
 }
 

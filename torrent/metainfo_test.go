@@ -74,7 +74,11 @@ func TestParseMetaInfo(t *testing.T) {
 	}
 
 	for i := range testCases {
-		err := assertMetaInfo(&testCases[i], t)
-		assertError(err, &testCases[i], t)
+		testCase := testCases[i]
+
+		t.Run(testCase.name, func(t *testing.T) {
+			err := assertMetaInfo(&testCase, t)
+			assertError(err, &testCase, t)
+		})
 	}
 }
