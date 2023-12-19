@@ -70,6 +70,7 @@ func TestParseMetaInfo(t *testing.T) {
 	testCases := []testCase{
 		{"hello world", "examples/hello_world.torrent", metaInfoTestCase{"http://localhost:6969/announce", "hello_world", "2af633c618e64c9ea3972789f5764fbea6f42d40"}, nil},
 		{"lovecraft", "examples/lovecraft.torrent", metaInfoTestCase{"http://bt1.archive.org:6969/announce", "sevenhplovecraftstories_pc_librivox", "588fb9c2cf9f7ceb973976c1e0eaaf38c3444999"}, nil},
+		{"ubuntu", "examples/ubuntu-22.04.3-desktop-amd64.iso.torrent", metaInfoTestCase{"https://torrent.ubuntu.com/announce", "ubuntu-22.04.3-desktop-amd64.iso", "75439d5de343999ab377c617c2c647902956e282"}, nil},
 		{"missing length and files", "examples/missing_length_and_files.torrent", metaInfoTestCase{}, ErrLengthAndFilesNotSpecified},
 	}
 
