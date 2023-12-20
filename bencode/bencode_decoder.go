@@ -27,7 +27,14 @@ func NewDecoder(reader io.Reader) *Decoder {
 	return &Decoder{reader, 0}
 }
 
-func (decoder *Decoder) Decode(v any) error {
+func (decoder *Decoder) Decode(v any) (ret error) {
+	defer func() {
+		if r := recover(); r != nil {
+			errMsg := fmt.Sprintf("Recovered: %v", r)
+			ret = errors.New(errMsg)
+		}
+	}()
+
 	if reflect.TypeOf(v).Kind() != reflect.Pointer {
 		errMsg := fmt.Sprintf("%v not passed pointer!", v)
 		return errors.New(errMsg)
