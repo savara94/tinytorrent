@@ -95,3 +95,20 @@ func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
 func (metaInfo *MetaInfo) GetInfoHash() []byte {
 	return metaInfo.infoHash
 }
+
+func (metaInfo *MetaInfo) GetFullLength() (int, error) {
+	if metaInfo.Info.Length != nil {
+		return *metaInfo.Info.Length, nil
+	}
+
+	if metaInfo.Info.Files != nil {
+		sum := 0
+		for i := range *metaInfo.Info.Files {
+			sum += (*metaInfo.Info.Files)[i].Length
+		}
+
+		return sum, nil
+	}
+
+	return 0, errors.New("Can't calculate full length!")
+}
