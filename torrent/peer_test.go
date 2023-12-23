@@ -7,7 +7,44 @@ import (
 )
 
 func TestInitiatingHandshake(t *testing.T) {
+	writeBuffer := bytes.NewBuffer([]byte{})
 
+	seeder := Seeder{SeederInfo: PeerInfo{PeerId: []byte(randSeq(20))}, SeederWriter: writeBuffer, MetaInfo: &MetaInfo{infoHash: []byte(randSeq(20))}}
+
+	err := seeder.InitiateHandshake()
+
+	if err != nil {
+		t.Errorf("Did not expect error %#v", err)
+	}
+
+	expectingSequence := []struct {
+		name  string
+		bytes []byte
+	}{
+		{"Protocol", []byte(HandshakeMsg)},
+		{"Reserved", make([]byte, 8)},
+		{"Infohash", seeder.MetaInfo.GetInfoHash()},
+		{"PeerId", seeder.SeederInfo.PeerId},
+	}
+
+	for i := range expectingSequence {
+		readingBytes := make([]byte, len(expectingSequence[i].bytes))
+
+		n, err := writeBuffer.Read(readingBytes)
+		if err != nil {
+			t.Errorf("Did not expect err %#v", err)
+		}
+
+		if n < len(readingBytes) {
+			t.Errorf("Could not read %d bytes", len(readingBytes))
+		}
+
+		if err == nil {
+			if !reflect.DeepEqual(readingBytes, expectingSequence[i].bytes) {
+				t.Errorf("Expected %#v, got %#v", expectingSequence[i].bytes, readingBytes)
+			}
+		}
+	}
 }
 
 type peerMsgSendTestCase struct {
