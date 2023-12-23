@@ -49,6 +49,52 @@ func TestSend(t *testing.T) {
 	}
 }
 
-func TestReceive(t *testing.T) {
+type peerMsgReceiveTestCase struct {
+	name           string
+	bytesToReceive []byte
+	peerMsg        PeerMessage
+	wantedError    error
+}
 
+func TestReceive(t *testing.T) {
+	testCases := []peerMsgReceiveTestCase{
+		{"Choke recv", []byte{Choke}, ChokeMessage, nil},
+		{"Unchoke recv", []byte{Unchoke}, UnchokeMessage, nil},
+		{"Interested recv", []byte{Interested}, InterestedMessage, nil},
+		{"Not interested recv", []byte{NotInterested}, NotInterestedMessage, nil},
+		// {"Keepalive recv", []byte{}, KeepAliveMessage, nil},
+		{"Bitfield recv", []byte{5, 1, 2, 3, 4}, PeerMessage{Type: Bitfield, Payload: BitfieldPayload{Bitfield: []byte{1, 2, 3, 4}}}, nil},
+		{"Request recv", []byte{6, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5}, PeerMessage{Type: Request, Payload: RequestPayload{Index: 0, Begin: 1, Length: 5}}, nil},
+		{"Piece recv", []byte{7, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 4, 5}, PeerMessage{Type: Piece, Payload: PiecePayload{Index: 0, Begin: 1, Piece: []byte{1, 2, 3, 4, 5}}}, nil},
+		{"Cancel recv", []byte{8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5}, PeerMessage{Type: Cancel, Payload: CancelPayload{Index: 0, Begin: 1, Length: 5}}, nil},
+	}
+
+	for i := range testCases {
+		writer := bytes.NewBuffer([]byte{})
+
+		writer.Write(testCases[i].bytesToReceive)
+
+		msg, err := Receive(writer, func(msgType byte) []byte {
+			switch msgType {
+			case Bitfield:
+				return make([]byte, 4)
+			case Piece:
+				return make([]byte, 5)
+			default:
+				return nil
+			}
+		})
+
+		if err == nil {
+			if !reflect.DeepEqual(testCases[i].peerMsg, *msg) {
+				t.Errorf("%s wanted to recv %#v, but recv %#v", testCases[i].name, testCases[i].peerMsg, msg)
+			}
+		}
+
+		if err != nil {
+			if err != testCases[i].wantedError {
+				t.Errorf("%s wanted error %#v, but got %#v", testCases[i].name, testCases[i].wantedError, err)
+			}
+		}
+	}
 }
