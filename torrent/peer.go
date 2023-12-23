@@ -1,7 +1,10 @@
 package torrent
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -112,4 +115,107 @@ func (seeder *Seeder) InitiateHandshake() error {
 
 	// If seeder agrees, it won't severe the connection.
 	return nil
+}
+
+func Send(writer io.Writer, message *PeerMessage) error {
+	if message.Type == KeepAlive {
+		_, err := writer.Write([]byte{})
+		return err
+	}
+
+	typeByte := []byte{message.Type}
+	buffer := bytes.NewBuffer(typeByte)
+
+	// Todo
+	// Make this a little bit better :)
+
+	switch payload := message.Payload.(type) {
+	case RequestPayload:
+		binary.Write(buffer, binary.BigEndian, payload)
+	case HavePayload:
+		binary.Write(buffer, binary.BigEndian, payload)
+	case PiecePayload:
+		binary.Write(buffer, binary.BigEndian, payload.Index)
+		binary.Write(buffer, binary.BigEndian, payload.Begin)
+		binary.Write(buffer, binary.BigEndian, payload.Piece)
+	case BitfieldPayload:
+		binary.Write(buffer, binary.BigEndian, payload.Bitfield)
+	case CancelPayload:
+		binary.Write(buffer, binary.BigEndian, payload)
+	}
+
+	bytesToSend := buffer.Bytes()
+
+	n, err := writer.Write(bytesToSend)
+	if err != nil {
+		return err
+	}
+
+	if n < len(bytesToSend) {
+		errMsg := fmt.Sprintf("Couldn't send %#v", message)
+		return errors.New(errMsg)
+	}
+
+	return nil
+}
+
+func Receive(reader io.Reader, allocator func(msgType byte) []byte) (*PeerMessage, error) {
+	typeByte := make([]byte, 1)
+
+	n, err := reader.Read(typeByte)
+	if err != nil {
+		return nil, err
+	}
+
+	if n == 0 {
+		return &KeepAliveMessage, nil
+	}
+
+	var payload any
+
+	// TODO
+	// Write this better
+
+	switch typeByte[0] {
+	case Choke:
+		return &ChokeMessage, nil
+	case Unchoke:
+		return &UnchokeMessage, nil
+	case Interested:
+		return &InterestedMessage, nil
+	case NotInterested:
+		return &NotInterestedMessage, nil
+	case Have:
+		havePayload := HavePayload{}
+		binary.Read(reader, binary.BigEndian, &havePayload)
+		payload = havePayload
+		break
+	case Request:
+		rqPayload := RequestPayload{}
+		binary.Read(reader, binary.BigEndian, &rqPayload)
+		payload = rqPayload
+		break
+	case Cancel:
+		cancPayload := CancelPayload{}
+		binary.Read(reader, binary.BigEndian, &cancPayload)
+		payload = cancPayload
+		break
+	case Bitfield:
+		bfPayload := BitfieldPayload{Bitfield: allocator(typeByte[0])}
+		binary.Read(reader, binary.BigEndian, &bfPayload.Bitfield)
+		payload = bfPayload
+		break
+	case Piece:
+		piecePayload := PiecePayload{Piece: allocator(typeByte[0])}
+		binary.Read(reader, binary.BigEndian, &piecePayload.Index)
+		binary.Read(reader, binary.BigEndian, &piecePayload.Begin)
+		binary.Read(reader, binary.BigEndian, &piecePayload.Piece)
+
+		payload = piecePayload
+		break
+	}
+
+	peerMsg := PeerMessage{Type: typeByte[0], Payload: payload}
+
+	return &peerMsg, nil
 }
