@@ -12,10 +12,10 @@ type SeederBuilder interface {
 }
 
 type Client struct {
-	PeerId   []byte
-	Torrents []db.Torrent
-	Port     uint16
+	Client db.Client
+	Port   uint16
 
+	ClientRepo   db.ClientRepository
 	TorrentRepo  db.TorrentRepository
 	AnnounceRepo db.TrackerAnnounceRepository
 	PieceRepo    db.PieceRepository
