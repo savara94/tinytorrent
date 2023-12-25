@@ -4,4 +4,6 @@ use (
 	.
 	./bencode
 	./torrent
+	./db
+	./sqlite
 )
