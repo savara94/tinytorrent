@@ -2,6 +2,8 @@ package client
 
 import (
 	"io"
+	"log"
+	"time"
 
 	"example.com/db"
 	"example.com/torrent"
@@ -25,7 +27,29 @@ type Client struct {
 }
 
 func (c *Client) Initialize() error {
-	return nil
+	clientDb, err := c.ClientRepo.GetLast()
+	if err != nil {
+		return err
+	}
+
+	if clientDb == nil {
+		log.Print("First time running. Creating client record...")
+
+		clientDb = &db.Client{
+			ProtocolId: torrent.GenerateRandomProtocolId(),
+			Created:    time.Now(),
+		}
+
+		err := c.ClientRepo.Create(clientDb)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("Created client record.")
+	}
+
+	c.Client = *clientDb
+	return err
 }
 
 func (c *Client) OpenTorrent(reader io.Reader) (*db.Torrent, error) {
