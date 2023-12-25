@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 )
 
 type Peer struct {
@@ -71,6 +72,18 @@ type Seeder struct {
 	SeederWriter io.Writer
 	SeederReader io.Reader
 	MetaInfo     *MetaInfo
+}
+
+var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func GenerateRandomProtocolId() []byte {
+	b := make([]byte, 20)
+
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+
+	return b
 }
 
 func (seeder *Seeder) InitiateHandshake() error {
