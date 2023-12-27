@@ -1,9 +1,13 @@
 package client
 
 import (
+	"encoding/hex"
+	"errors"
 	"io"
 	"log"
 	"log/slog"
+	"os"
+	"path"
 	"time"
 
 	"example.com/db"
@@ -55,8 +59,52 @@ func (c *Client) Initialize() error {
 	return err
 }
 
-func (c *Client) OpenTorrent(reader io.Reader) (*db.Torrent, error) {
-	return nil, nil
+func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent, error) {
+	metaInfo, err := torrent.ParseMetaInfo(reader)
+	if err != nil {
+		slog.Error("This can't be parsed as a torrent file.")
+		return nil, err
+	}
+
+	directoryPath := path.Join(downloadPath, metaInfo.Info.Name)
+
+	err = os.Mkdir(directoryPath, os.ModeDir)
+	if err != nil {
+		slog.Info("Error creating directory " + directoryPath)
+		return nil, err
+	}
+
+	infoHash := metaInfo.GetInfoHash()
+	dbTorrent, err := c.TorrentRepo.GetByHashInfo(infoHash)
+	if err != nil {
+		slog.Error("Could not retrieve by infohash " + hex.EncodeToString(infoHash))
+		return nil, err
+	}
+
+	if dbTorrent != nil {
+		return dbTorrent, errors.New("Torrent already exists.")
+	}
+
+	slog.Info("Creating new torrent record " + metaInfo.Info.Name + "...")
+
+	dbTorrent = &db.Torrent{
+		HashInfo:    metaInfo.GetInfoHash(),
+		CreatedTime: time.Now(),
+		Paused:      false,
+		Location:    downloadPath,
+		Progress:    0,
+		RawMetaInfo: metaInfo.RawBytes,
+	}
+
+	err = c.TorrentRepo.Create(dbTorrent)
+	if err != nil {
+		slog.Error("Error when creating torrent record.")
+		return nil, err
+	}
+
+	slog.Info("Created new torrent record.")
+
+	return dbTorrent, nil
 }
 
 func (c *Client) Announce(trackerWriter io.WriteCloser, trackerReader io.ReadCloser) (*db.Torrent, error) {
