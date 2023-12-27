@@ -1,8 +1,11 @@
 package client
 
 import (
+	"io"
 	"os"
+	"path"
 	"reflect"
+	"strings"
 	"testing"
 
 	"example.com/db"
@@ -16,6 +19,8 @@ type testCase struct {
 	dbSchemaPath    string
 	testFunction    func(sqliteDb *sqlite.SQLiteDB, t *testing.T)
 }
+
+var schemaPath = "../sqlite/script.sql"
 
 func runTestCase(testCase *testCase, t *testing.T) {
 	// Common test case setup
@@ -92,8 +97,6 @@ func testInitializeWhenRecordExists(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 }
 
 func TestInitialize(t *testing.T) {
-	schemaPath := "../sqlite/script.sql"
-
 	testCases := []testCase{
 		{
 			name:            "First time initialize",
@@ -112,6 +115,163 @@ func TestInitialize(t *testing.T) {
 	for i := range testCases {
 		t.Run(testCases[i].name, func(t *testing.T) {
 			runTestCase(&testCases[i], t)
+		})
+	}
+}
+
+func testOpenTorrentWrongFile(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+	// Setup
+	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
+
+	torrentClient := Client{TorrentRepo: &torrentRepo}
+
+	testReader := strings.NewReader("this is not .torrent")
+
+	// Test
+	dbTorrent, err := torrentClient.OpenTorrent(testReader, "./")
+	if err == nil {
+		// TODO
+		// Check type as well
+		t.Errorf("Expected error here!")
+		return
+	}
+
+	if dbTorrent != nil {
+		t.Errorf("Expected nil here!")
+		return
+	}
+}
+
+func testDirectoryAlreadyTaken(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+	// Setup
+	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
+	torrentClient := Client{TorrentRepo: &torrentRepo}
+
+	fileReader, err := os.Open("../torrent/examples/hello_world.torrent")
+	if err != nil {
+		t.Errorf("Could not open test file %v", err)
+		return
+	}
+	defer fileReader.Close()
+
+	// This is contained inside file
+	torrentName := "hello_world"
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Errorf("Could not create temp dir %v", err)
+		return
+	}
+
+	downloadPath := path.Join(tmpDir, torrentName)
+	dbTorrent, err := torrentClient.OpenTorrent(fileReader, downloadPath)
+	if err == nil {
+		// TODO
+		// Check for type here.
+		t.Errorf("Expected error here")
+		return
+	}
+
+	if dbTorrent != nil {
+		t.Errorf("Expected nil here")
+		return
+	}
+}
+
+func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+	// Setup
+	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
+	torrentClient := Client{TorrentRepo: &torrentRepo}
+
+	fileReader, err := os.Open("../torrent/examples/hello_world.torrent")
+	if err != nil {
+		t.Errorf("Could not open test file %v", err)
+		return
+	}
+	defer fileReader.Close()
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Errorf("Could not create temp dir %v", err)
+		return
+	}
+
+	dbTorrent, err := torrentClient.OpenTorrent(fileReader, tmpDir)
+	if err != nil {
+		// TODO
+		// Check for type here.
+		t.Errorf("Did not expect error here here %v", err)
+		return
+	}
+
+	if dbTorrent == nil {
+		t.Errorf("Did not expect nil here")
+		return
+	}
+
+	if dbTorrent.TorrentId == 0 {
+		t.Errorf("TorrentId not updated %#v", dbTorrent)
+		return
+	}
+
+	t.Run("Open one more time", func(t *testing.T) {
+		_, err := fileReader.Seek(0, io.SeekStart)
+		if err != nil {
+			t.Errorf("Could not rewind file %v", err)
+		}
+
+		newTmpDir, _ := os.MkdirTemp("", "")
+		if err != nil {
+			t.Errorf("Could not create temp dir %v", err)
+			return
+		}
+
+		existingTorrent, err := torrentClient.OpenTorrent(fileReader, newTmpDir)
+		if err == nil {
+			t.Errorf("Expected error here!")
+		}
+
+		if err != nil {
+			// TODO
+			// Check for error type here
+		}
+
+		if existingTorrent == nil {
+			t.Errorf("Did not expect nil here")
+		}
+
+		if existingTorrent.Location != tmpDir {
+			t.Errorf("Expected old location %#v", existingTorrent)
+		}
+	})
+}
+
+func TestOpenTorrent(t *testing.T) {
+	testCases := []testCase{
+		{
+			name:            "Wrong file",
+			temporaryDbPath: "test3.db",
+			dbSchemaPath:    schemaPath,
+			testFunction:    testOpenTorrentWrongFile,
+		},
+		{
+			name:            "Directory already taken",
+			temporaryDbPath: "test4.db",
+			dbSchemaPath:    schemaPath,
+			testFunction:    testDirectoryAlreadyTaken,
+		},
+		{
+			name:            "Open valid few times",
+			temporaryDbPath: "test5.db",
+			dbSchemaPath:    schemaPath,
+			testFunction:    testOpenFewTimes,
+		},
+	}
+
+	for i := range testCases {
+		testCase := testCases[i]
+
+		t.Run(testCase.name, func(t *testing.T) {
+			runTestCase(&testCase, t)
 		})
 	}
 }
