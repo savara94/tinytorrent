@@ -28,9 +28,9 @@ type MetaInfo struct {
 	CreatedBy    string      `bencode:"created by"`
 	CreationDate int         `bencode:"creation date"`
 	Info         GeneralInfo `bencode:"info"`
+	RawBytes     []byte
 
 	infoHash []byte
-	rawBytes []byte
 }
 
 var ErrLengthAndFilesNotSpecified = errors.New("either length or files must be specified")
@@ -38,7 +38,7 @@ var ErrLengthAndFilesNotSpecified = errors.New("either length or files must be s
 func (metaInfo *MetaInfo) calculateInfoHash() error {
 	var anyMap map[string]any
 
-	err := bencode.Unmarshal(metaInfo.rawBytes, &anyMap)
+	err := bencode.Unmarshal(metaInfo.RawBytes, &anyMap)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
 		return nil, ErrLengthAndFilesNotSpecified
 	}
 
-	metaInfo.rawBytes = bytes
+	metaInfo.RawBytes = bytes
 
 	if err := metaInfo.calculateInfoHash(); err != nil {
 		return nil, err
