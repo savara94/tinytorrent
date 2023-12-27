@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"reflect"
 	"sort"
 	"strconv"
@@ -42,7 +42,9 @@ func Marshal(v any) ([]byte, error) {
 
 		return Marshal(pointerValue.Elem().Interface())
 	default:
-		log.Printf("Not supported kind %#v %#v", kind, v)
+		errMsg := fmt.Sprintf("Not supported kind %v", kind)
+		slog.Error(errMsg)
+
 		return nil, ErrNotSupportedType
 	}
 }

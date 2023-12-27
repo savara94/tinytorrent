@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -159,12 +159,12 @@ func parseAnnounceResponse(reader io.Reader) (*AnnounceResponse, error) {
 	// Try with standard format first
 	announceResponse, err := parseStandardAnnounceResponse(bytes)
 	if err != nil {
-		log.Printf("Standard parser failed %#v", err)
+		slog.Info("Standard parser failed " + err.Error())
 
 		// ...proceed with compact format
 		announceResponse, err = parseCompactAnnounceResponse(bytes)
 		if err != nil {
-			log.Printf("Compact parser failed %#v", err)
+			slog.Info("Compact parser failed " + err.Error())
 
 			return nil, errors.New("Could not parse announce response.")
 		}
