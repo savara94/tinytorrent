@@ -29,6 +29,7 @@ type Client struct {
 func (c *Client) Initialize() error {
 	clientDb, err := c.ClientRepo.GetLast()
 	if err != nil {
+		log.Fatalf("Could not retrieve client record.")
 		return err
 	}
 
@@ -42,6 +43,7 @@ func (c *Client) Initialize() error {
 
 		err := c.ClientRepo.Create(clientDb)
 		if err != nil {
+			log.Fatalf("Could not create client record.")
 			return err
 		}
 
