@@ -12,7 +12,7 @@ type TrackerAnnounceRepositorySQLite struct {
 
 func (r *TrackerAnnounceRepositorySQLite) Create(announce *db.TrackerAnnounce) error {
 	stmt, err := r.db.Prepare(`
-		INSERT INTO tracker_announce (torrent_id, announce_time, announciation, scheduled_time, err, done)
+		INSERT INTO tracker_announce (torrent_id, announce_time, announciation, scheduled_time, err, done, raw_response)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -20,7 +20,7 @@ func (r *TrackerAnnounceRepositorySQLite) Create(announce *db.TrackerAnnounce) e
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(announce.TorrentId, announce.AnnounceTime, announce.Announciation, announce.ScheduledTime, announce.Error, announce.Done)
+	result, err := stmt.Exec(announce.TorrentId, announce.AnnounceTime, announce.Announciation, announce.ScheduledTime, announce.Error, announce.Done, announce.RawResponse)
 	if err != nil {
 		return err
 	}
@@ -38,7 +38,7 @@ func (r *TrackerAnnounceRepositorySQLite) Create(announce *db.TrackerAnnounce) e
 func (r *TrackerAnnounceRepositorySQLite) Update(announce *db.TrackerAnnounce) error {
 	stmt, err := r.db.Prepare(`
 		UPDATE tracker_announce
-		SET torrent_id=?, announce_time=?, announciation=?, scheduled_time=?, err=?, done=?
+		SET torrent_id=?, announce_time=?, announciation=?, scheduled_time=?, err=?, done=?, raw_response=?
 		WHERE tracker_announce_id=?
 	`)
 	if err != nil {
@@ -46,7 +46,7 @@ func (r *TrackerAnnounceRepositorySQLite) Update(announce *db.TrackerAnnounce) e
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(announce.TorrentId, announce.AnnounceTime, announce.Announciation, announce.ScheduledTime, announce.Error, announce.Done, announce.TrackerAnnounceId)
+	_, err = stmt.Exec(announce.TorrentId, announce.AnnounceTime, announce.Announciation, announce.ScheduledTime, announce.Error, announce.Done, announce.TrackerAnnounceId, announce.RawResponse)
 	return err
 }
 
@@ -60,7 +60,7 @@ func (r *TrackerAnnounceRepositorySQLite) GetByTorrentId(torrentId int) ([]db.Tr
 	var announces []db.TrackerAnnounce
 	for rows.Next() {
 		var announce db.TrackerAnnounce
-		err := rows.Scan(&announce.TrackerAnnounceId, &announce.TorrentId, &announce.AnnounceTime, &announce.Announciation, &announce.ScheduledTime, &announce.Error, &announce.Done)
+		err := rows.Scan(&announce.TrackerAnnounceId, &announce.TorrentId, &announce.AnnounceTime, &announce.Announciation, &announce.ScheduledTime, &announce.Error, &announce.Done, &announce.RawResponse)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +80,7 @@ func (r *TrackerAnnounceRepositorySQLite) GetScheduledAfter(scheduledTime time.T
 	var announces []db.TrackerAnnounce
 	for rows.Next() {
 		var announce db.TrackerAnnounce
-		err := rows.Scan(&announce.TrackerAnnounceId, &announce.TorrentId, &announce.AnnounceTime, &announce.Announciation, &announce.ScheduledTime, &announce.Error, &announce.Done)
+		err := rows.Scan(&announce.TrackerAnnounceId, &announce.TorrentId, &announce.AnnounceTime, &announce.Announciation, &announce.ScheduledTime, &announce.Error, &announce.Done, &announce.RawResponse)
 		if err != nil {
 			return nil, err
 		}

@@ -10,6 +10,7 @@ type TrackerAnnounce struct {
 	ScheduledTime     *time.Time
 	Error             *string
 	Done              bool
+	RawResponse       []byte
 }
 
 type TrackerAnnounceRepository interface {

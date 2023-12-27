@@ -20,8 +20,9 @@ type PeerInfo struct {
 }
 
 type AnnounceResponse struct {
-	Interval int
-	Peers    []PeerInfo
+	Interval    int
+	Peers       []PeerInfo
+	RawResponse []byte
 }
 
 func buildTrackerRequest(peerId []byte, port int, metaInfo *MetaInfo) (*http.Request, error) {
@@ -169,6 +170,8 @@ func parseAnnounceResponse(reader io.Reader) (*AnnounceResponse, error) {
 			return nil, errors.New("Could not parse announce response.")
 		}
 	}
+
+	announceResponse.RawResponse = bytes
 
 	return announceResponse, nil
 }
