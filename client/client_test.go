@@ -275,3 +275,34 @@ func TestOpenTorrent(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnounce(t *testing.T) {
+	testCases := []testCase{
+		{
+			name:            "5xx error",
+			temporaryDbPath: "test6.db",
+			dbSchemaPath:    schemaPath,
+			testFunction:    func(sqliteDb *sqlite.SQLiteDB, t *testing.T) {},
+		},
+		{
+			name:            "Error giving failure reason",
+			temporaryDbPath: "test7.db",
+			dbSchemaPath:    schemaPath,
+			testFunction:    func(sqliteDb *sqlite.SQLiteDB, t *testing.T) {},
+		},
+		{
+			name:            "Announce OK",
+			temporaryDbPath: "test8.db",
+			dbSchemaPath:    schemaPath,
+			testFunction:    func(sqliteDb *sqlite.SQLiteDB, t *testing.T) {},
+		},
+	}
+
+	for i := range testCases {
+		testCase := testCases[i]
+
+		t.Run(testCase.name, func(t *testing.T) {
+			runTestCase(&testCase, t)
+		})
+	}
+}
