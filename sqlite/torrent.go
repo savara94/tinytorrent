@@ -1,6 +1,10 @@
 package sqlite
 
-import "example.com/db"
+import (
+	"database/sql"
+
+	"example.com/db"
+)
 
 type TorrentRepositorySQLite struct {
 	SQLiteDB
@@ -76,8 +80,14 @@ func (r *TorrentRepositorySQLite) GetByHashInfo(hashInfo []byte) (*db.Torrent, e
 	err := r.db.QueryRow("SELECT * FROM torrent WHERE hash_info=?", hashInfo).Scan(
 		&torrent.TorrentId, &torrent.HashInfo, &torrent.CreatedTime, &torrent.Paused, &torrent.Location, &torrent.Progress, &torrent.RawMetaInfo,
 	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	return &torrent, nil
 }
