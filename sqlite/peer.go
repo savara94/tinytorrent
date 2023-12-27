@@ -1,6 +1,10 @@
 package sqlite
 
-import "example.com/db"
+import (
+	"database/sql"
+
+	"example.com/db"
+)
 
 type PeerRepositorySQLite struct {
 	SQLiteDB
@@ -63,4 +67,26 @@ func (r *PeerRepositorySQLite) GetByTorrentId(torrentId int) ([]db.Peer, error) 
 	}
 
 	return peers, nil
+}
+
+func (r *PeerRepositorySQLite) GetByProtocolPeerId(protocolPeerId []byte) (*db.Peer, error) {
+	var peer db.Peer
+
+	row := r.db.QueryRow(`
+		SELECT PeerId, ProtocolPeerId, IP, Port, TorrentId, Reachable
+		FROM Peer
+		WHERE ProtocolPeerId = ?;
+	`, protocolPeerId)
+
+	err := row.Scan(&peer.PeerId, &peer.ProtocolPeerId, &peer.IP, &peer.Port, &peer.TorrentId, &peer.Reachable)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &peer, nil
 }
