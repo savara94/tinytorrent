@@ -1,8 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -29,6 +31,8 @@ type Client struct {
 	PeerRepo     db.PeerRepository
 
 	SeederBuilder SeederBuilder
+
+	initialized bool
 }
 
 func (c *Client) Initialize() error {
@@ -56,7 +60,9 @@ func (c *Client) Initialize() error {
 	}
 
 	c.Client = *clientDb
-	return err
+	c.initialized = true
+
+	return nil
 }
 
 func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent, error) {
@@ -70,7 +76,7 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 
 	err = os.Mkdir(directoryPath, os.ModeDir)
 	if err != nil {
-		slog.Info("Error creating directory " + directoryPath)
+		slog.Error("Error creating directory " + directoryPath)
 		return nil, err
 	}
 
@@ -107,8 +113,97 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 	return dbTorrent, nil
 }
 
-func (c *Client) Announce(trackerWriter io.WriteCloser, trackerReader io.ReadCloser) (*db.Torrent, error) {
-	return nil, nil
+func (c *Client) Announce(dbTorrent *db.Torrent) (*db.TrackerAnnounce, error) {
+	if !c.initialized {
+		return nil, errors.New("Client not initialized.")
+	}
+
+	rawMetaInfoBuffer := bytes.NewBuffer(dbTorrent.RawMetaInfo)
+	metaInfo, err := torrent.ParseMetaInfo(rawMetaInfoBuffer)
+
+	if err != nil {
+		errMsg := fmt.Sprintf("Invalid RawMetaInfo in database, record #%d", dbTorrent.TorrentId)
+		slog.Error(errMsg)
+
+		return nil, err
+	}
+
+	// Make this more readable
+	// -----------------------
+	dbAnnounce := db.TrackerAnnounce{
+		TorrentId:    dbTorrent.TorrentId,
+		AnnounceTime: time.Now(),
+		Done:         false,
+	}
+
+	var nextAnnounceTime time.Time
+
+	announceResponse, err := torrent.Announce(c.Client.ProtocolId, int(c.Port), metaInfo)
+	if err != nil {
+		// Record an error
+		errMsg := err.Error()
+		dbAnnounce.Error = &errMsg
+
+		// Try again in a minute
+		nextAnnounceTime = dbAnnounce.AnnounceTime.Add(time.Minute)
+	} else {
+		// Try again when tracker server said
+		nextAnnounceTime = dbAnnounce.AnnounceTime.Add(time.Second * time.Duration(announceResponse.Interval))
+
+		dbAnnounce.RawResponse = announceResponse.RawResponse
+	}
+
+	dbAnnounce.ScheduledTime = &nextAnnounceTime
+	// -----------------------
+
+	err = c.AnnounceRepo.Create(&dbAnnounce)
+	if err != nil {
+		slog.Error("Could not save tracker announce to database.")
+		return nil, err
+	}
+
+	// TODO
+	// Will move this to be done in background later on
+
+	for i := range announceResponse.Peers {
+		peer := announceResponse.Peers[i]
+
+		dbPeer, err := c.PeerRepo.GetByTorrentIdAndProtocolPeerId(dbAnnounce.TorrentId, peer.PeerId)
+		if err != nil {
+			slog.Error("Error on peer database query.")
+			return &dbAnnounce, err
+		}
+
+		if dbPeer != nil {
+			debugMsg := fmt.Sprintf("Protocol Peer Id %s for TorrentId %d already exists, skipping...", hex.EncodeToString(dbPeer.ProtocolPeerId), dbAnnounce.TorrentId)
+			slog.Debug(debugMsg)
+
+			continue
+		}
+
+		infoMsg := fmt.Sprintf("Creating new peer %s...", hex.EncodeToString(peer.PeerId))
+		slog.Info(infoMsg)
+
+		dbPeer = &db.Peer{
+			TorrentId:      dbAnnounce.TorrentId,
+			ProtocolPeerId: peer.PeerId,
+			IP:             peer.IP.String(),
+			Port:           peer.Port,
+			// Assume is reachable for now
+			Reachable: true,
+		}
+
+		err = c.PeerRepo.Create(dbPeer)
+		if err != nil {
+			slog.Error("Could not save peer record to database")
+			return &dbAnnounce, err
+		}
+
+		infoMsg = fmt.Sprintf("Created new peer %s.", hex.EncodeToString(peer.PeerId))
+		slog.Info(infoMsg)
+	}
+
+	return &dbAnnounce, nil
 }
 
 func (c *Client) DownloadPiece(torrent *db.Torrent, index int) error {
