@@ -162,6 +162,10 @@ func (c *Client) Announce(dbTorrent *db.Torrent) (*db.TrackerAnnounce, error) {
 		return nil, err
 	}
 
+	if announceResponse == nil {
+		return &dbAnnounce, nil
+	}
+
 	// TODO
 	// Will move this to be done in background later on
 
