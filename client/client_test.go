@@ -1,13 +1,18 @@
 package client
 
 import (
+	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"example.com/bencode"
 	"example.com/db"
 	"example.com/sqlite"
 	"example.com/torrent"
@@ -276,25 +281,258 @@ func TestOpenTorrent(t *testing.T) {
 	}
 }
 
+func testAnnounce5xxError(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+	// Setup
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	announceRepo := sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb}
+	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
+	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
+
+	metaInfo := torrent.MetaInfo{
+		Announce: server.URL + "/announce",
+		Info: torrent.GeneralInfo{
+			Name:  "fake",
+			Files: &[]torrent.FileInfo{},
+		},
+	}
+
+	metaInfoBytes, err := bencode.Marshal(metaInfo)
+	metaInfoBuffer := bytes.NewBuffer(metaInfoBytes)
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Errorf("Could not create test directory %v", tmpDir)
+	}
+
+	client := Client{AnnounceRepo: &announceRepo, TorrentRepo: &torrentRepo, ClientRepo: &clientRepo}
+	err = client.Initialize()
+	if err != nil {
+		t.Errorf("Could not initialize client %v", err)
+	}
+
+	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
+	if err != nil {
+		t.Errorf("Could not open torrent %v", err)
+	}
+
+	// Test
+	dbAnnounce, err := client.Announce(dbTorrent)
+	if err != nil {
+		t.Errorf("Not expecting error error here.")
+		return
+	}
+
+	if dbAnnounce == nil {
+		t.Errorf("Expected data to be created. %v", err)
+		return
+	}
+
+	if dbAnnounce.Error == nil {
+		t.Errorf("Expected error here to be stated.")
+		return
+	}
+
+	if *dbAnnounce.ScheduledTime != dbAnnounce.AnnounceTime.Add(time.Minute) {
+		t.Errorf("Scheduled time not set properly. %v", dbAnnounce)
+		return
+	}
+}
+
+func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+	// Setup
+	bodyResponseStruct := struct {
+		FailureReason string `bencode:"failure reason"`
+	}{"You asked for gibberish"}
+
+	bodyBytes, err := bencode.Marshal(bodyResponseStruct)
+	if err != nil {
+		t.Errorf("Could not marshal response.")
+		return
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+
+		n, err := w.Write(bodyBytes)
+		if err != nil {
+			t.Errorf("Could not send back response.")
+			return
+		}
+
+		if n < len(bodyBytes) {
+			t.Errorf("Not all bytes are sent.")
+		}
+	}))
+	defer server.Close()
+
+	announceRepo := sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb}
+	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
+	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
+
+	metaInfo := torrent.MetaInfo{
+		Announce: server.URL + "/announce",
+		Info: torrent.GeneralInfo{
+			Name:  "fake",
+			Files: &[]torrent.FileInfo{},
+		},
+	}
+
+	metaInfoBytes, err := bencode.Marshal(metaInfo)
+	metaInfoBuffer := bytes.NewBuffer(metaInfoBytes)
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Errorf("Could not create test directory %v", tmpDir)
+	}
+
+	client := Client{AnnounceRepo: &announceRepo, TorrentRepo: &torrentRepo, ClientRepo: &clientRepo}
+	err = client.Initialize()
+	if err != nil {
+		t.Errorf("Could not initialize client %v", err)
+	}
+
+	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
+	if err != nil {
+		t.Errorf("Could not open torrent %v", err)
+	}
+
+	// Test
+	dbAnnounce, err := client.Announce(dbTorrent)
+	if err != nil {
+		t.Errorf("Not expected error here.")
+		return
+	}
+
+	if dbAnnounce == nil {
+		t.Errorf("Expected to exist here.")
+		return
+	}
+
+	if dbAnnounce.Error == nil {
+		t.Errorf("Expected error to be specified.")
+		return
+	}
+
+	if *dbAnnounce.ScheduledTime != dbAnnounce.AnnounceTime.Add(time.Minute) {
+		t.Errorf("Scheduled time not set properly.")
+		return
+	}
+}
+
+func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+	// Setup
+	announceFile, err := os.Open("../torrent/examples/ubuntu-22.04.3-desktop-amd64.iso.torrent.compact0.announce")
+	if err != nil {
+		t.Errorf("Could not open announce file.")
+		return
+	}
+
+	announceBytes, err := io.ReadAll(announceFile)
+	if err != nil {
+		t.Errorf("Could not read announce file")
+		return
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+
+		n, err := w.Write(announceBytes)
+		if err != nil {
+			t.Errorf("Failed to write announce response")
+			return
+		}
+
+		if n < len(announceBytes) {
+			t.Errorf("Failed to write complete response")
+			return
+		}
+
+	}))
+	defer server.Close()
+
+	announceRepo := sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb}
+	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
+	peerRepo := sqlite.PeerRepositorySQLite{SQLiteDB: *sqliteDb}
+	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
+
+	metaInfo := torrent.MetaInfo{
+		Announce: server.URL + "/announce",
+		Info: torrent.GeneralInfo{
+			Name:  "fake",
+			Files: &[]torrent.FileInfo{},
+		},
+	}
+
+	metaInfoBytes, err := bencode.Marshal(metaInfo)
+	metaInfoBuffer := bytes.NewBuffer(metaInfoBytes)
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Errorf("Could not create test directory %v", tmpDir)
+	}
+
+	client := Client{AnnounceRepo: &announceRepo, TorrentRepo: &torrentRepo, ClientRepo: &clientRepo, PeerRepo: &peerRepo}
+	err = client.Initialize()
+	if err != nil {
+		t.Errorf("Could not initialize client %v", err)
+	}
+
+	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
+	if err != nil {
+		t.Errorf("Could not open torrent %v", err)
+	}
+
+	// Test
+	dbAnnounce, err := client.Announce(dbTorrent)
+	if err != nil {
+		t.Errorf("Not expected error here. %v", err)
+		return
+	}
+
+	if dbAnnounce == nil {
+		t.Errorf("Expected to exist here.")
+		return
+	}
+
+	if dbAnnounce.Error != nil {
+		t.Errorf("Expected error not to be specified.")
+		return
+	}
+
+	if *dbAnnounce.ScheduledTime != dbAnnounce.AnnounceTime.Add(time.Second*1800) {
+		t.Errorf("Scheduled time not set properly.")
+		return
+	}
+
+	if len(dbAnnounce.RawResponse) == 0 {
+		t.Errorf("Raw response not set properly")
+		return
+	}
+}
+
 func TestAnnounce(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:            "5xx error",
 			temporaryDbPath: "test6.db",
 			dbSchemaPath:    schemaPath,
-			testFunction:    func(sqliteDb *sqlite.SQLiteDB, t *testing.T) {},
+			testFunction:    testAnnounce5xxError,
 		},
 		{
 			name:            "Error giving failure reason",
 			temporaryDbPath: "test7.db",
 			dbSchemaPath:    schemaPath,
-			testFunction:    func(sqliteDb *sqlite.SQLiteDB, t *testing.T) {},
+			testFunction:    testAnnounceGivingFailureReason,
 		},
 		{
 			name:            "Announce OK",
 			temporaryDbPath: "test8.db",
 			dbSchemaPath:    schemaPath,
-			testFunction:    func(sqliteDb *sqlite.SQLiteDB, t *testing.T) {},
+			testFunction:    testAnnounceOK,
 		},
 	}
 
