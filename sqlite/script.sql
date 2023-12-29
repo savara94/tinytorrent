@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS "tracker_announce" (
     "scheduled_time" DATETIME,
     "err" TEXT,
     "done" BOOLEAN,
-    "raw_response" BLOB NOT NULL,
+    "raw_response" BLOB,
     FOREIGN KEY ("torrent_id") REFERENCES "torrent" ("torrent_id") ON DELETE CASCADE
 );
 
