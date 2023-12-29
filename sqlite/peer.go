@@ -69,14 +69,14 @@ func (r *PeerRepositorySQLite) GetByTorrentId(torrentId int) ([]db.Peer, error) 
 	return peers, nil
 }
 
-func (r *PeerRepositorySQLite) GetByProtocolPeerId(protocolPeerId []byte) (*db.Peer, error) {
+func (r *PeerRepositorySQLite) GetByTorrentIdAndProtocolPeerId(torrentId int, protocolPeerId []byte) (*db.Peer, error) {
 	var peer db.Peer
 
 	row := r.db.QueryRow(`
-		SELECT PeerId, ProtocolPeerId, IP, Port, TorrentId, Reachable
-		FROM Peer
-		WHERE ProtocolPeerId = ?;
-	`, protocolPeerId)
+		SELECT peer_id, protocol_peer_id, ip, port, torrent_id, reachable
+		FROM peer
+		WHERE torrent_id = ? AND protocol_peer_id = ?;
+	`, torrentId, protocolPeerId)
 
 	err := row.Scan(&peer.PeerId, &peer.ProtocolPeerId, &peer.IP, &peer.Port, &peer.TorrentId, &peer.Reachable)
 
