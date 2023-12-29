@@ -13,7 +13,7 @@ type TrackerAnnounceRepositorySQLite struct {
 func (r *TrackerAnnounceRepositorySQLite) Create(announce *db.TrackerAnnounce) error {
 	stmt, err := r.db.Prepare(`
 		INSERT INTO tracker_announce (torrent_id, announce_time, announciation, scheduled_time, err, done, raw_response)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
