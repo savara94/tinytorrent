@@ -93,6 +93,10 @@ func ParseMetaInfo(reader io.Reader) (*MetaInfo, error) {
 }
 
 func (metaInfo *MetaInfo) GetInfoHash() []byte {
+	if metaInfo.infoHash == nil {
+		metaInfo.calculateInfoHash()
+	}
+
 	return metaInfo.infoHash
 }
 
