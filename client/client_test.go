@@ -218,6 +218,11 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		return
 	}
 
+	if dbTorrent.Name != "hello_world" {
+		t.Errorf("Name not set")
+		return
+	}
+
 	t.Run("Open one more time", func(t *testing.T) {
 		_, err := fileReader.Seek(0, io.SeekStart)
 		if err != nil {
@@ -233,6 +238,7 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		existingTorrent, err := torrentClient.OpenTorrent(fileReader, newTmpDir)
 		if err == nil {
 			t.Errorf("Expected error here!")
+			return
 		}
 
 		if err != nil {
@@ -242,6 +248,7 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 
 		if existingTorrent == nil {
 			t.Errorf("Did not expect nil here")
+			return
 		}
 
 		if existingTorrent.Location != tmpDir {
@@ -317,6 +324,7 @@ func testAnnounce5xxError(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
 	if err != nil {
 		t.Errorf("Could not open torrent %v", err)
+		return
 	}
 
 	// Test
@@ -398,6 +406,7 @@ func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
 	if err != nil {
 		t.Errorf("Could not open torrent %v", err)
+		return
 	}
 
 	// Test
@@ -484,6 +493,7 @@ func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
 	if err != nil {
 		t.Errorf("Could not open torrent %v", err)
+		return
 	}
 
 	// Test
