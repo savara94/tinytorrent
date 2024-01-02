@@ -18,33 +18,59 @@ import (
 	"example.com/torrent"
 )
 
+type testCaseDependencies struct {
+	db            *sqlite.SQLiteDB
+	trackerServer *httptest.Server
+}
+
 type testCase struct {
-	name            string
-	temporaryDbPath string
-	dbSchemaPath    string
-	testFunction    func(sqliteDb *sqlite.SQLiteDB, t *testing.T)
+	name         string
+	dbSchemaPath string
+	testFunction func(client *Client, dependencies *testCaseDependencies, t *testing.T)
 }
 
 var schemaPath = "../sqlite/script.sql"
 
 func runTestCase(testCase *testCase, t *testing.T) {
+	temporaryDbDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Errorf("Could not create temporary test DB directory %v", err)
+		return
+	}
+
+	temporaryDbPath := path.Join(temporaryDbDir, "test.db")
+
 	// Common test case setup
-	sqliteDb, err := sqlite.NewSQLiteDB(testCase.temporaryDbPath, testCase.dbSchemaPath)
-	defer os.Remove(testCase.temporaryDbPath)
+	sqliteDb, err := sqlite.NewSQLiteDB(temporaryDbPath, testCase.dbSchemaPath)
+	defer os.Remove(temporaryDbPath)
 
 	if err != nil {
 		t.Errorf("Could not create SQLiteDB %v", err)
 		return
 	}
 
-	testCase.testFunction(sqliteDb, t)
+	trackerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer trackerServer.Close()
+
+	dependencies := testCaseDependencies{
+		db:            sqliteDb,
+		trackerServer: trackerServer,
+	}
+
+	client := Client{
+		ClientRepo:   &sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb},
+		TorrentRepo:  &sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb},
+		AnnounceRepo: &sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb},
+		PieceRepo:    &sqlite.PieceRepositorySQLite{SQLiteDB: *sqliteDb},
+		PeerRepo:     &sqlite.PeerRepositorySQLite{SQLiteDB: *sqliteDb},
+	}
+
+	testCase.testFunction(&client, &dependencies, t)
 }
 
-func testFirstInitialize(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
-	// Setup
-	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
-
-	dbClient, err := clientRepo.GetLast()
+func testFirstInitialize(client *Client, dependencies *testCaseDependencies, t *testing.T) {
+	// Test
+	dbClient, err := client.ClientRepo.GetLast()
 	if err != nil {
 		t.Errorf("Could not retrieve last client %v", err)
 		return
@@ -52,16 +78,15 @@ func testFirstInitialize(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 
 	if dbClient != nil {
 		t.Errorf("Expected client record not to exist!")
+		return
 	}
 
-	torrentClient := Client{ClientRepo: &clientRepo}
-
-	// Test
-	if err := torrentClient.Initialize(); err != nil {
-		t.Errorf("Could not initialize torrent client %v", err)
+	if err := client.Initialize(); err != nil {
+		t.Errorf("Could not initialize client %v", err)
+		return
 	}
 
-	dbClient, err = clientRepo.GetLast()
+	dbClient, err = client.ClientRepo.GetLast()
 	if err != nil {
 		t.Errorf("Could not retrieve last client %v", err)
 		return
@@ -69,20 +94,18 @@ func testFirstInitialize(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 
 	if dbClient == nil {
 		t.Errorf("Expected client record to exist!")
+		return
 	}
 
-	if !reflect.DeepEqual(dbClient.ProtocolId, torrentClient.Client.ProtocolId) {
-		t.Errorf("Not assigned DBClient to TorrentClient, %#v != %#v", dbClient.ProtocolId, torrentClient.Client.ProtocolId)
+	if !reflect.DeepEqual(dbClient.ProtocolId, client.Client.ProtocolId) {
+		t.Errorf("Not assigned DBClient to TorrentClient, %#v != %#v", dbClient.ProtocolId, client.Client.ProtocolId)
 	}
 }
 
-func testInitializeWhenRecordExists(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+func testInitializeWhenRecordExists(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Setup
-	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
-	torrentClient := Client{ClientRepo: &clientRepo}
-
 	dbClient := db.Client{ProtocolId: torrent.GenerateRandomProtocolId()}
-	err := clientRepo.Create(&dbClient)
+	err := client.ClientRepo.Create(&dbClient)
 
 	if err != nil {
 		t.Errorf("Could not create pre-made client %v", err)
@@ -90,30 +113,28 @@ func testInitializeWhenRecordExists(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	}
 
 	// Test
-	err = torrentClient.Initialize()
+	err = client.Initialize()
 	if err != nil {
 		t.Errorf("Could not initialize torrent client %v", err)
 		return
 	}
 
-	if !reflect.DeepEqual(dbClient.ProtocolId, torrentClient.Client.ProtocolId) {
-		t.Errorf("Did not pick existing client %#v != %#v", dbClient, torrentClient.Client)
+	if !reflect.DeepEqual(dbClient.ProtocolId, client.Client.ProtocolId) {
+		t.Errorf("Did not pick existing client %#v != %#v", dbClient, client.Client)
 	}
 }
 
 func TestInitialize(t *testing.T) {
 	testCases := []testCase{
 		{
-			name:            "First time initialize",
-			temporaryDbPath: "test1.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testFirstInitialize,
+			name:         "First time initialize",
+			dbSchemaPath: schemaPath,
+			testFunction: testFirstInitialize,
 		},
 		{
-			name:            "Initialization record exists",
-			temporaryDbPath: "test2.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testInitializeWhenRecordExists,
+			name:         "Initialization record exists",
+			dbSchemaPath: schemaPath,
+			testFunction: testInitializeWhenRecordExists,
 		},
 	}
 
@@ -124,16 +145,10 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
-func testOpenTorrentWrongFile(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
-	// Setup
-	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
-
-	torrentClient := Client{TorrentRepo: &torrentRepo}
-
-	testReader := strings.NewReader("this is not .torrent")
-
+func testOpenTorrentWrongFile(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Test
-	dbTorrent, err := torrentClient.OpenTorrent(testReader, "./")
+	testReader := strings.NewReader("this is not .torrent")
+	dbTorrent, err := client.OpenTorrent(testReader, "./")
 	if err == nil {
 		// TODO
 		// Check type as well
@@ -147,11 +162,8 @@ func testOpenTorrentWrongFile(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	}
 }
 
-func testDirectoryAlreadyTaken(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+func testDirectoryAlreadyTaken(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Setup
-	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
-	torrentClient := Client{TorrentRepo: &torrentRepo}
-
 	fileReader, err := os.Open("../torrent/examples/hello_world.torrent")
 	if err != nil {
 		t.Errorf("Could not open test file %v", err)
@@ -168,7 +180,9 @@ func testDirectoryAlreadyTaken(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	}
 
 	downloadPath := path.Join(tmpDir, torrentName)
-	dbTorrent, err := torrentClient.OpenTorrent(fileReader, downloadPath)
+
+	// Test
+	dbTorrent, err := client.OpenTorrent(fileReader, downloadPath)
 	if err == nil {
 		// TODO
 		// Check for type here.
@@ -182,11 +196,8 @@ func testDirectoryAlreadyTaken(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	}
 }
 
-func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+func testOpenFewTimes(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Setup
-	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
-	torrentClient := Client{TorrentRepo: &torrentRepo}
-
 	fileReader, err := os.Open("../torrent/examples/hello_world.torrent")
 	if err != nil {
 		t.Errorf("Could not open test file %v", err)
@@ -200,7 +211,8 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		return
 	}
 
-	dbTorrent, err := torrentClient.OpenTorrent(fileReader, tmpDir)
+	// Test
+	dbTorrent, err := client.OpenTorrent(fileReader, tmpDir)
 	if err != nil {
 		// TODO
 		// Check for type here.
@@ -227,6 +239,7 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		_, err := fileReader.Seek(0, io.SeekStart)
 		if err != nil {
 			t.Errorf("Could not rewind file %v", err)
+			return
 		}
 
 		newTmpDir, _ := os.MkdirTemp("", "")
@@ -235,7 +248,7 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 			return
 		}
 
-		existingTorrent, err := torrentClient.OpenTorrent(fileReader, newTmpDir)
+		existingTorrent, err := client.OpenTorrent(fileReader, newTmpDir)
 		if err == nil {
 			t.Errorf("Expected error here!")
 			return
@@ -253,6 +266,7 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 
 		if existingTorrent.Location != tmpDir {
 			t.Errorf("Expected old location %#v", existingTorrent)
+			return
 		}
 	})
 }
@@ -260,22 +274,19 @@ func testOpenFewTimes(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 func TestOpenTorrent(t *testing.T) {
 	testCases := []testCase{
 		{
-			name:            "Wrong file",
-			temporaryDbPath: "test3.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testOpenTorrentWrongFile,
+			name:         "Wrong file",
+			dbSchemaPath: schemaPath,
+			testFunction: testOpenTorrentWrongFile,
 		},
 		{
-			name:            "Directory already taken",
-			temporaryDbPath: "test4.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testDirectoryAlreadyTaken,
+			name:         "Directory already taken",
+			dbSchemaPath: schemaPath,
+			testFunction: testDirectoryAlreadyTaken,
 		},
 		{
-			name:            "Open valid few times",
-			temporaryDbPath: "test5.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testOpenFewTimes,
+			name:         "Open valid few times",
+			dbSchemaPath: schemaPath,
+			testFunction: testOpenFewTimes,
 		},
 	}
 
@@ -288,19 +299,14 @@ func TestOpenTorrent(t *testing.T) {
 	}
 }
 
-func testAnnounce5xxError(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+func testAnnounce5xxError(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Setup
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dependencies.trackerServer.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	announceRepo := sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb}
-	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
-	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
+	})
 
 	metaInfo := torrent.MetaInfo{
-		Announce: server.URL + "/announce",
+		Announce: dependencies.trackerServer.URL + "/announce",
 		Info: torrent.GeneralInfo{
 			Name:  "fake",
 			Files: &[]torrent.FileInfo{},
@@ -313,12 +319,13 @@ func testAnnounce5xxError(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "")
 	if err != nil {
 		t.Errorf("Could not create test directory %v", tmpDir)
+		return
 	}
 
-	client := Client{AnnounceRepo: &announceRepo, TorrentRepo: &torrentRepo, ClientRepo: &clientRepo}
 	err = client.Initialize()
 	if err != nil {
 		t.Errorf("Could not initialize client %v", err)
+		return
 	}
 
 	dbTorrent, err := client.OpenTorrent(metaInfoBuffer, tmpDir)
@@ -350,7 +357,7 @@ func testAnnounce5xxError(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	}
 }
 
-func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+func testAnnounceGivingFailureReason(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Setup
 	bodyResponseStruct := struct {
 		FailureReason string `bencode:"failure reason"`
@@ -362,7 +369,7 @@ func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		return
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dependencies.trackerServer.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 
 		n, err := w.Write(bodyBytes)
@@ -374,15 +381,10 @@ func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		if n < len(bodyBytes) {
 			t.Errorf("Not all bytes are sent.")
 		}
-	}))
-	defer server.Close()
-
-	announceRepo := sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb}
-	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
-	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
+	})
 
 	metaInfo := torrent.MetaInfo{
-		Announce: server.URL + "/announce",
+		Announce: dependencies.trackerServer.URL + "/announce",
 		Info: torrent.GeneralInfo{
 			Name:  "fake",
 			Files: &[]torrent.FileInfo{},
@@ -397,7 +399,6 @@ func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		t.Errorf("Could not create test directory %v", tmpDir)
 	}
 
-	client := Client{AnnounceRepo: &announceRepo, TorrentRepo: &torrentRepo, ClientRepo: &clientRepo}
 	err = client.Initialize()
 	if err != nil {
 		t.Errorf("Could not initialize client %v", err)
@@ -432,7 +433,7 @@ func testAnnounceGivingFailureReason(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 	}
 }
 
-func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
+func testAnnounceOK(client *Client, dependencies *testCaseDependencies, t *testing.T) {
 	// Setup
 	announceFile, err := os.Open("../torrent/examples/ubuntu-22.04.3-desktop-amd64.iso.torrent.compact0.announce")
 	if err != nil {
@@ -446,7 +447,7 @@ func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		return
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dependencies.trackerServer.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 
 		n, err := w.Write(announceBytes)
@@ -459,17 +460,10 @@ func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 			t.Errorf("Failed to write complete response")
 			return
 		}
-
-	}))
-	defer server.Close()
-
-	announceRepo := sqlite.TrackerAnnounceRepositorySQLite{SQLiteDB: *sqliteDb}
-	torrentRepo := sqlite.TorrentRepositorySQLite{SQLiteDB: *sqliteDb}
-	peerRepo := sqlite.PeerRepositorySQLite{SQLiteDB: *sqliteDb}
-	clientRepo := sqlite.ClientRepositorySQLite{SQLiteDB: *sqliteDb}
+	})
 
 	metaInfo := torrent.MetaInfo{
-		Announce: server.URL + "/announce",
+		Announce: dependencies.trackerServer.URL + "/announce",
 		Info: torrent.GeneralInfo{
 			Name:  "fake",
 			Files: &[]torrent.FileInfo{},
@@ -484,7 +478,6 @@ func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 		t.Errorf("Could not create test directory %v", tmpDir)
 	}
 
-	client := Client{AnnounceRepo: &announceRepo, TorrentRepo: &torrentRepo, ClientRepo: &clientRepo, PeerRepo: &peerRepo}
 	err = client.Initialize()
 	if err != nil {
 		t.Errorf("Could not initialize client %v", err)
@@ -527,22 +520,19 @@ func testAnnounceOK(sqliteDb *sqlite.SQLiteDB, t *testing.T) {
 func TestAnnounce(t *testing.T) {
 	testCases := []testCase{
 		{
-			name:            "5xx error",
-			temporaryDbPath: "test6.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testAnnounce5xxError,
+			name:         "5xx error",
+			dbSchemaPath: schemaPath,
+			testFunction: testAnnounce5xxError,
 		},
 		{
-			name:            "Error giving failure reason",
-			temporaryDbPath: "test7.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testAnnounceGivingFailureReason,
+			name:         "Error giving failure reason",
+			dbSchemaPath: schemaPath,
+			testFunction: testAnnounceGivingFailureReason,
 		},
 		{
-			name:            "Announce OK",
-			temporaryDbPath: "test8.db",
-			dbSchemaPath:    schemaPath,
-			testFunction:    testAnnounceOK,
+			name:         "Announce OK",
+			dbSchemaPath: schemaPath,
+			testFunction: testAnnounceOK,
 		},
 	}
 
