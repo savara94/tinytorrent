@@ -100,6 +100,9 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 		RawMetaInfo: metaInfo.RawBytes,
 	}
 
+	infoMsg := fmt.Sprintf("Creating new torrent record %s:%s...", dbTorrent.Name, hex.EncodeToString(dbTorrent.HashInfo))
+	slog.Info(infoMsg)
+
 	err = c.TorrentRepo.Create(dbTorrent)
 	if err != nil {
 		slog.Error("Error when creating torrent record.")
