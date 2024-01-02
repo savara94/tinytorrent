@@ -91,9 +91,8 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 		return dbTorrent, errors.New("Torrent already exists.")
 	}
 
-	slog.Info("Creating new torrent record " + metaInfo.Info.Name + "...")
-
 	dbTorrent = &db.Torrent{
+		Name:        metaInfo.Info.Name,
 		HashInfo:    metaInfo.GetInfoHash(),
 		CreatedTime: time.Now(),
 		Paused:      false,
