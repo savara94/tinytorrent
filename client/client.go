@@ -21,6 +21,7 @@ type SeederBuilder interface {
 }
 
 type Client struct {
+	SeederBuilder
 	Client db.Client
 	Port   uint16
 
@@ -29,8 +30,6 @@ type Client struct {
 	AnnounceRepo db.TrackerAnnounceRepository
 	PieceRepo    db.PieceRepository
 	PeerRepo     db.PeerRepository
-
-	SeederBuilder SeederBuilder
 
 	initialized bool
 }
