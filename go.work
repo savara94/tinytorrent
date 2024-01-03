@@ -6,4 +6,5 @@ use (
 	./torrent
 	./db
 	./sqlite
+	./client
 )

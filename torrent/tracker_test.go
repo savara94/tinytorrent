@@ -2,23 +2,12 @@ package torrent
 
 import (
 	"io"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 )
-
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randSeq(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
-}
 
 type peerTestCase struct {
 	metaInfoLocation string
@@ -81,7 +70,7 @@ func TestAnnounce(t *testing.T) {
 		mockedUrl := server.URL + announceUrl.Path
 		metaInfo.Announce = mockedUrl
 
-		peerId := []byte(randSeq(20))
+		peerId := GenerateRandomProtocolId()
 		port := 6699
 		announceResponse, err := Announce(peerId, port, metaInfo)
 

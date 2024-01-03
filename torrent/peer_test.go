@@ -9,7 +9,7 @@ import (
 func TestInitiatingHandshake(t *testing.T) {
 	writeBuffer := bytes.NewBuffer([]byte{})
 
-	seeder := Seeder{SeederInfo: PeerInfo{PeerId: []byte(randSeq(20))}, SeederWriter: writeBuffer, MetaInfo: &MetaInfo{infoHash: []byte(randSeq(20))}}
+	seeder := Seeder{SeederInfo: PeerInfo{PeerId: GenerateRandomProtocolId()}, SeederWriter: writeBuffer, MetaInfo: &MetaInfo{infoHash: GenerateRandomProtocolId()}}
 
 	err := seeder.InitiateHandshake()
 

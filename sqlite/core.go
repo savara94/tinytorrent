@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type SQLiteDB struct {

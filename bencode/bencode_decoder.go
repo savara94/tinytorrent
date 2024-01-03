@@ -283,6 +283,8 @@ func getStructFields(v any) map[string]reflect.StructField {
 
 		if encName, exists := field.Tag.Lookup("bencode"); exists {
 			encodeName = encName
+		} else {
+			continue
 		}
 
 		fieldMap[encodeName] = field
