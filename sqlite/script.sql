@@ -54,3 +54,20 @@ CREATE TABLE IF NOT EXISTS "clients" (
     "protocol_id" BLOB,
     "created" DATETIME
 );
+
+CREATE TABLE IF NOT EXISTS "connections" (
+    "torrent_id"          INTEGER,
+    "remote_peer_id"      INTEGER,
+    "im_choked"           BOOLEAN,
+    "remote_is_choked"    BOOLEAN,
+    "im_interested"       BOOLEAN,
+    "remote_is_interested" BOOLEAN,
+    "download_rate"       REAL,
+    "upload_rate"         REAL,
+    "last_activity"       TIMESTAMP,
+    
+    PRIMARY KEY ("torrent_id", "remote_peer_id"),
+    
+    FOREIGN KEY ("torrent_id") REFERENCES "your_torrent_table_name"("torrent_id"),
+    FOREIGN KEY ("remote_peer_id") REFERENCES "your_peer_table_name"("peer_id")
+);
