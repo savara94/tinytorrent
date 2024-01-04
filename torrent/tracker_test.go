@@ -70,9 +70,13 @@ func TestAnnounce(t *testing.T) {
 		mockedUrl := server.URL + announceUrl.Path
 		metaInfo.Announce = mockedUrl
 
-		peerId := GenerateRandomProtocolId()
-		port := 6699
-		announceResponse, err := Announce(peerId, port, metaInfo)
+		trackerAnnounceRequest := AnnounceRequest{
+			AnnounceURL: mockedUrl,
+			PeerId:      GenerateRandomProtocolId(),
+			InfoHash:    metaInfo.GetInfoHash(),
+			Port:        6699,
+		}
+		announceResponse, err := Announce(&trackerAnnounceRequest)
 
 		if err == nil && wantedErr != nil {
 			t.Errorf("Not expected, but got error %#v", err)

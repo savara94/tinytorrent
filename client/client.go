@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -90,8 +89,16 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 		return dbTorrent, errors.New("Torrent already exists.")
 	}
 
+	fullLength, err := metaInfo.GetFullLength()
+	if err != nil {
+		slog.Error("Could not calculate full length of " + metaInfo.Info.Name)
+		return nil, err
+	}
+
 	dbTorrent = &db.Torrent{
 		Name:        metaInfo.Info.Name,
+		Announce:    metaInfo.Announce,
+		Size:        fullLength,
 		HashInfo:    metaInfo.GetInfoHash(),
 		CreatedTime: time.Now(),
 		Paused:      false,
@@ -119,14 +126,16 @@ func (c *Client) Announce(dbTorrent *db.Torrent) (*db.TrackerAnnounce, error) {
 		return nil, errors.New("Client not initialized.")
 	}
 
-	rawMetaInfoBuffer := bytes.NewBuffer(dbTorrent.RawMetaInfo)
-	metaInfo, err := torrent.ParseMetaInfo(rawMetaInfoBuffer)
-
-	if err != nil {
-		errMsg := fmt.Sprintf("Invalid RawMetaInfo in database, record #%d", dbTorrent.TorrentId)
-		slog.Error(errMsg)
-
-		return nil, err
+	announceRequest := torrent.AnnounceRequest{
+		AnnounceURL: dbTorrent.Announce,
+		PeerId:      c.Client.ProtocolId,
+		InfoHash:    dbTorrent.HashInfo,
+		Port:        int(c.Port),
+		Left:        dbTorrent.Size,
+		// TODO
+		// Fill this later.
+		Uploaded:   0,
+		Downloaded: 0,
 	}
 
 	// Make this more readable
@@ -139,7 +148,7 @@ func (c *Client) Announce(dbTorrent *db.Torrent) (*db.TrackerAnnounce, error) {
 
 	var nextAnnounceTime time.Time
 
-	announceResponse, err := torrent.Announce(c.Client.ProtocolId, int(c.Port), metaInfo)
+	announceResponse, err := torrent.Announce(&announceRequest)
 	if err != nil {
 		// Record an error
 		errMsg := err.Error()

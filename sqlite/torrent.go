@@ -12,15 +12,15 @@ type TorrentRepositorySQLite struct {
 
 func (r *TorrentRepositorySQLite) Create(torrent *db.Torrent) error {
 	stmt, err := r.db.Prepare(`
-		INSERT INTO torrent (name, hash_info, created_time, paused, location, progress, raw_meta_info)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO torrent (name, announce, size, hash_info, created_time, paused, location, progress, raw_meta_info)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(torrent.Name, torrent.HashInfo, torrent.CreatedTime, torrent.Paused, torrent.Location, torrent.Progress, torrent.RawMetaInfo)
+	result, err := stmt.Exec(torrent.Name, torrent.Announce, torrent.Size, torrent.HashInfo, torrent.CreatedTime, torrent.Paused, torrent.Location, torrent.Progress, torrent.RawMetaInfo)
 	if err != nil {
 		return err
 	}
@@ -38,7 +38,7 @@ func (r *TorrentRepositorySQLite) Create(torrent *db.Torrent) error {
 func (r *TorrentRepositorySQLite) Update(torrent *db.Torrent) error {
 	stmt, err := r.db.Prepare(`
 		UPDATE torrent
-		SET name=?, hash_info=?, created_time=?, paused=?, location=?, progress=?, raw_meta_info=?
+		SET name=?, announce=?, size=?, hash_info=?, created_time=?, paused=?, location=?, progress=?, raw_meta_info=?
 		WHERE torrent_id=?
 	`)
 	if err != nil {
@@ -46,7 +46,7 @@ func (r *TorrentRepositorySQLite) Update(torrent *db.Torrent) error {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(torrent.Name, torrent.HashInfo, torrent.CreatedTime, torrent.Paused, torrent.Location, torrent.Progress, torrent.RawMetaInfo, torrent.TorrentId)
+	_, err = stmt.Exec(torrent.Name, torrent.Announce, torrent.Size, torrent.HashInfo, torrent.CreatedTime, torrent.Paused, torrent.Location, torrent.Progress, torrent.RawMetaInfo, torrent.TorrentId)
 	return err
 }
 
@@ -65,7 +65,7 @@ func (r *TorrentRepositorySQLite) GetAll() ([]db.Torrent, error) {
 	var torrents []db.Torrent
 	for rows.Next() {
 		var torrent db.Torrent
-		err := rows.Scan(&torrent.TorrentId, &torrent.Name, &torrent.HashInfo, &torrent.CreatedTime, &torrent.Paused, &torrent.Location, &torrent.Progress, &torrent.RawMetaInfo)
+		err := rows.Scan(&torrent.TorrentId, &torrent.Announce, &torrent.Size, &torrent.Name, &torrent.HashInfo, &torrent.CreatedTime, &torrent.Paused, &torrent.Location, &torrent.Progress, &torrent.RawMetaInfo)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +78,7 @@ func (r *TorrentRepositorySQLite) GetAll() ([]db.Torrent, error) {
 func (r *TorrentRepositorySQLite) GetByHashInfo(hashInfo []byte) (*db.Torrent, error) {
 	var torrent db.Torrent
 	err := r.db.QueryRow("SELECT * FROM torrent WHERE hash_info=?", hashInfo).Scan(
-		&torrent.TorrentId, &torrent.Name, &torrent.HashInfo, &torrent.CreatedTime, &torrent.Paused, &torrent.Location, &torrent.Progress, &torrent.RawMetaInfo,
+		&torrent.TorrentId, &torrent.Name, &torrent.Announce, &torrent.Size, &torrent.HashInfo, &torrent.CreatedTime, &torrent.Paused, &torrent.Location, &torrent.Progress, &torrent.RawMetaInfo,
 	)
 
 	if err == sql.ErrNoRows {
