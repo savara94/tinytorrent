@@ -36,16 +36,16 @@ CREATE TABLE IF NOT EXISTS "peer" (
 
 CREATE TABLE IF NOT EXISTS "piece" (
     "piece_id" INTEGER PRIMARY KEY AUTOINCREMENT,
-    "torrent_id" INTEGER NOT NULL,
-    "peer_id" INTEGER NOT NULL,
-    "is_downloaded" BOOLEAN NOT NULL,
-    "start" DATETIME NOT NULL,
+    "torrent_id" INTEGER,
+    "located_at_peer_id" INTEGER,
+    "came_from_peer_id" INTEGER,
+    "start" DATETIME,
     "end" DATETIME,
-    "index" INTEGER NOT NULL,
-    "length" INTEGER NOT NULL,
-    "confirmed" BOOLEAN,
-    FOREIGN KEY ("torrent_id") REFERENCES "torrent" ("torrent_id") ON DELETE CASCADE,
-    FOREIGN KEY ("peer_id") REFERENCES "peer" ("peer_id") ON DELETE CASCADE
+    "index" INTEGER,
+    "length" INTEGER,
+    FOREIGN KEY ("torrent_id") REFERENCES "torrent"("torrent_id"),
+    FOREIGN KEY ("located_at_peer_id") REFERENCES "peer"("peer_id"),
+    FOREIGN KEY ("came_from_peer_id") REFERENCES "peer"("peer_id")
 );
 
 CREATE TABLE IF NOT EXISTS "clients" (
