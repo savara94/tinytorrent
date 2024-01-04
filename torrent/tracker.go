@@ -65,7 +65,7 @@ func readAnnounceResponse(response *http.Response) (*AnnounceResponse, error) {
 		return nil, errors.New(errMsg)
 	}
 
-	return parseAnnounceResponse(response.Body)
+	return ParseAnnounceResponse(response.Body)
 }
 
 func parseStandardAnnounceResponse(data []byte) (*AnnounceResponse, error) {
@@ -157,7 +157,7 @@ func parseCompactAnnounceResponse(data []byte) (*AnnounceResponse, error) {
 	return &announceResponse, nil
 }
 
-func parseAnnounceResponse(reader io.Reader) (*AnnounceResponse, error) {
+func ParseAnnounceResponse(reader io.Reader) (*AnnounceResponse, error) {
 	bytes, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
