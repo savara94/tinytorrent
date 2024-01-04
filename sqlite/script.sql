@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS "torrent" (
     "torrent_id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "name" TEXT NOT NULL,
+    "announce" TEXT NOT NULL,
     "hash_info" BLOB NOT NULL,
     "created_time" DATETIME NOT NULL,
     "paused" BOOLEAN NOT NULL,

@@ -5,6 +5,7 @@ import "time"
 type Torrent struct {
 	TorrentId   int
 	Name        string
+	Announce    string
 	HashInfo    []byte
 	CreatedTime time.Time
 	Paused      bool

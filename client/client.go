@@ -92,6 +92,7 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 
 	dbTorrent = &db.Torrent{
 		Name:        metaInfo.Info.Name,
+		Announce:    metaInfo.Announce,
 		HashInfo:    metaInfo.GetInfoHash(),
 		CreatedTime: time.Now(),
 		Paused:      false,
