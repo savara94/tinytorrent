@@ -90,9 +90,16 @@ func (c *Client) OpenTorrent(reader io.Reader, downloadPath string) (*db.Torrent
 		return dbTorrent, errors.New("Torrent already exists.")
 	}
 
+	fullLength, err := metaInfo.GetFullLength()
+	if err != nil {
+		slog.Error("Could not calculate full length of " + metaInfo.Info.Name)
+		return nil, err
+	}
+
 	dbTorrent = &db.Torrent{
 		Name:        metaInfo.Info.Name,
 		Announce:    metaInfo.Announce,
+		Size:        fullLength,
 		HashInfo:    metaInfo.GetInfoHash(),
 		CreatedTime: time.Now(),
 		Paused:      false,

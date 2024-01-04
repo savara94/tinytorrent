@@ -100,6 +100,11 @@ func testOpenFewTimes(client *Client, dependencies *testCaseDependencies, t *tes
 		return
 	}
 
+	if dbTorrent.Size == 0 {
+		t.Errorf("Size not set")
+		return
+	}
+
 	t.Run("Open one more time", func(t *testing.T) {
 		_, err := fileReader.Seek(0, io.SeekStart)
 		if err != nil {
