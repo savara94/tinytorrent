@@ -3,10 +3,10 @@ package db
 type Peer struct {
 	PeerId         int
 	ProtocolPeerId []byte
+	TorrentId      int
 	IP             string
 	Port           int
-	TorrentId      int
-	Reachable      bool
+	Pieces         []Piece
 }
 
 type PeerRepository interface {
@@ -14,4 +14,5 @@ type PeerRepository interface {
 	Update(peer *Peer) error
 	GetByTorrentId(torrentId int) ([]Peer, error)
 	GetByTorrentIdAndProtocolPeerId(torrentId int, protocolPeerId []byte) (*Peer, error)
+	GetPeersForTorrentWithPieceIndex(torrentId int, pieceIndex int) ([]Peer, error)
 }

@@ -28,10 +28,9 @@ CREATE TABLE IF NOT EXISTS "tracker_announce" (
 CREATE TABLE IF NOT EXISTS "peer" (
     "peer_id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "protocol_peer_id" BLOB NOT NULL,
+    "torrent_id" INTEGER NOT NULL,
     "ip" TEXT NOT NULL,
     "port" INTEGER NOT NULL,
-    "torrent_id" INTEGER NOT NULL,
-    "reachable" BOOLEAN NOT NULL,
     FOREIGN KEY ("torrent_id") REFERENCES "torrent" ("torrent_id") ON DELETE CASCADE
 );
 

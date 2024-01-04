@@ -219,8 +219,6 @@ func (c *Client) ProcessTrackerAnnounce(trackerAnnounce *db.TrackerAnnounce) ([]
 			ProtocolPeerId: peer.PeerId,
 			IP:             peer.IP.String(),
 			Port:           peer.Port,
-			// Assume is reachable for now
-			Reachable: true,
 		}
 
 		err = c.PeerRepo.Create(&newDbPeer)
