@@ -13,6 +13,16 @@ import (
 	"example.com/bencode"
 )
 
+type AnnounceRequest struct {
+	AnnounceURL string
+	PeerId      []byte
+	InfoHash    []byte
+	Port        int
+	Uploaded    int
+	Downloaded  int
+	Left        int
+}
+
 type PeerInfo struct {
 	PeerId []byte
 	IP     net.IP
@@ -25,32 +35,28 @@ type AnnounceResponse struct {
 	RawResponse []byte
 }
 
-func buildTrackerRequest(peerId []byte, port int, metaInfo *MetaInfo) (*http.Request, error) {
-	req, err := http.NewRequest("GET", metaInfo.Announce, nil)
+func buildTrackerRequest(request *AnnounceRequest) (*http.Request, error) {
+	httpReq, err := http.NewRequest("GET", request.AnnounceURL, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	q := url.Values{}
-	length, err := metaInfo.GetFullLength()
-	if err != nil {
-		return nil, err
-	}
 
-	q.Add("info_hash", string(metaInfo.GetInfoHash()))
-	q.Add("peer_id", string(peerId))
+	q.Add("info_hash", string(request.InfoHash))
+	q.Add("peer_id", string(request.PeerId))
 	// IP is optional
 	// q.Add("ip", "")
-	q.Add("port", strconv.Itoa(port))
-	q.Add("uploaded", "0")
-	q.Add("downloaded", "0")
-	q.Add("left", strconv.Itoa(length))
+	q.Add("port", strconv.Itoa(request.Port))
+	q.Add("uploaded", strconv.Itoa(request.Uploaded))
+	q.Add("downloaded", strconv.Itoa(request.Downloaded))
+	q.Add("left", strconv.Itoa(request.Left))
 	// Event is optional -> event=started|completed|stopped
 	// q.Add("event")
 
-	req.URL.RawQuery = q.Encode()
+	httpReq.URL.RawQuery = q.Encode()
 
-	return req, nil
+	return httpReq, nil
 }
 
 func readAnnounceResponse(response *http.Response) (*AnnounceResponse, error) {
@@ -176,8 +182,8 @@ func parseAnnounceResponse(reader io.Reader) (*AnnounceResponse, error) {
 	return announceResponse, nil
 }
 
-func Announce(peerId []byte, port int, metaInfo *MetaInfo) (*AnnounceResponse, error) {
-	httpRequest, err := buildTrackerRequest(peerId, port, metaInfo)
+func Announce(request *AnnounceRequest) (*AnnounceResponse, error) {
+	httpRequest, err := buildTrackerRequest(request)
 	if err != nil {
 		return nil, err
 	}
