@@ -181,6 +181,10 @@ func (c *Client) Announce(dbTorrent *db.Torrent) (*db.TrackerAnnounce, error) {
 func (c *Client) ProcessTrackerAnnounce(trackerAnnounce *db.TrackerAnnounce) ([]db.Peer, error) {
 	var dbPeers []db.Peer
 
+	if trackerAnnounce.Error != nil {
+		return dbPeers, errors.New("Tracker announce contains an error.")
+	}
+
 	buffer := bytes.NewBuffer(trackerAnnounce.RawResponse)
 
 	announceResponse, err := torrent.ParseAnnounceResponse(buffer)
