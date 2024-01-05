@@ -3,19 +3,16 @@ package torrent
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand"
+	"reflect"
 )
 
-type Peer struct {
-	PeerId       []byte
-	Port         int
-	MetaInfoList []MetaInfo
-}
-
-const HandshakeMsg = "\x19" + "BitTorrent protocol"
+const HandshakeMsg = "\x13" + "BitTorrent protocol"
 
 const (
 	Choke byte = iota
@@ -67,11 +64,17 @@ type PiecePayload struct {
 	Piece []byte
 }
 
-type Seeder struct {
-	SeederInfo   PeerInfo
-	SeederWriter io.Writer
-	SeederReader io.Reader
-	MetaInfo     *MetaInfo
+type ConnectionChecker func() (bool, error)
+type ConnectionTerminator func() error
+
+type PeerConnection struct {
+	PeerId              []byte
+	RemotePeerId        []byte
+	PeerWriter          io.Writer
+	PeerReader          io.Reader
+	MetaInfo            *MetaInfo
+	IsConnectionSevered ConnectionChecker
+	SevereConnection    ConnectionTerminator
 }
 
 var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -86,47 +89,52 @@ func GenerateRandomProtocolId() []byte {
 	return b
 }
 
-func (seeder *Seeder) InitiateHandshake() error {
-	n, err := seeder.SeederWriter.Write([]byte(HandshakeMsg))
+func (pc *PeerConnection) InitiateHandshake() error {
+	var handshakeBytesWithoutPeerId []byte
+
+	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, []byte(HandshakeMsg)...)
+	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
+	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, pc.MetaInfo.GetInfoHash()...)
+
+	myHandshakeBytes := append(handshakeBytesWithoutPeerId, pc.PeerId...)
+	remoteHandshakeBytes := append(handshakeBytesWithoutPeerId, pc.RemotePeerId...)
+
+	n, err := pc.PeerWriter.Write(myHandshakeBytes)
 	if err != nil {
 		return err
 	}
 
-	if n < len(HandshakeMsg) {
-		return errors.New("Couldn't send handshake bytes")
+	if n < len(myHandshakeBytes) {
+		return errors.New("Couldn't send all my handshake bytes.")
 	}
 
-	// 8 empty bytes are next
-	reservedBytes := []byte{0, 0, 0, 0, 0, 0, 0, 0}
-	n, err = seeder.SeederWriter.Write(reservedBytes)
+	severed, err := pc.IsConnectionSevered()
 	if err != nil {
 		return err
 	}
 
-	if n < len(reservedBytes) {
-		return errors.New("Couldn't send reserved bytes.")
+	if severed {
+		errMsg := fmt.Sprintf("Connection is severed by remote peer %s", hex.EncodeToString(pc.RemotePeerId))
+		return errors.New(errMsg)
 	}
 
-	infoHash := seeder.MetaInfo.GetInfoHash()
-	n, err = seeder.SeederWriter.Write(infoHash)
+	readBytes := make([]byte, len(remoteHandshakeBytes))
+
+	n, err = pc.PeerReader.Read(readBytes)
 	if err != nil {
 		return err
 	}
 
-	if n < len(infoHash) {
-		return errors.New("Couldn't send infohash bytes.")
+	if !reflect.DeepEqual(readBytes, remoteHandshakeBytes) {
+		err = pc.SevereConnection()
+		if err != nil {
+			errMsg := fmt.Sprintf("Could not severe connection with %s %v", hex.EncodeToString(pc.RemotePeerId), err)
+			slog.Error(errMsg)
+		}
+
+		return errors.New("Did not receive expected handshake bytes.")
 	}
 
-	n, err = seeder.SeederWriter.Write(seeder.SeederInfo.PeerId)
-	if err != nil {
-		return err
-	}
-
-	if n < len(seeder.SeederInfo.PeerId) {
-		return errors.New("Couldn't send peer id bytes.")
-	}
-
-	// If seeder agrees, it won't severe the connection.
 	return nil
 }
 
