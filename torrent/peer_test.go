@@ -2,48 +2,127 @@ package torrent
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
+type handshakeTestCase struct {
+	name                 string
+	peerId               []byte
+	remotePeerId         []byte
+	infoHash             []byte
+	readBuffer           io.Reader
+	connectionChecker    ConnectionChecker
+	expectedError        bool
+	expectedErrorMsgPart string
+}
+
+func runInitiatingHandshakeTests(testCase *handshakeTestCase, t *testing.T) {
+	// Setup
+	buffer := bytes.NewBuffer([]byte{})
+
+	peerConnection := PeerConnection{
+		PeerId:              testCase.peerId,
+		RemotePeerId:        testCase.remotePeerId,
+		PeerWriter:          buffer,
+		PeerReader:          testCase.readBuffer,
+		MetaInfo:            &MetaInfo{infoHash: testCase.infoHash},
+		IsConnectionSevered: testCase.connectionChecker,
+	}
+
+	// Test
+	err := peerConnection.InitiateHandshake()
+
+	// Test errors
+	if testCase.expectedError && err == nil {
+		t.Errorf("Expected error here.")
+		return
+	}
+
+	if testCase.expectedError && err != nil {
+		if !strings.Contains(err.Error(), testCase.expectedErrorMsgPart) {
+			t.Errorf("Expected part of message %s in %v", testCase.expectedErrorMsgPart, err)
+			return
+		}
+	}
+
+	if !testCase.expectedError && err != nil {
+		t.Errorf("Did not expect error here. %v", err)
+		return
+	}
+
+	// Test what's been wrote to buffer
+	gotHandshake := buffer.Bytes()
+	expectedHandshake := createHandshakeBytes(peerConnection.PeerId, testCase.infoHash)
+
+	if !reflect.DeepEqual(expectedHandshake, gotHandshake) {
+		t.Errorf("Did not send what was expected %v | %v", expectedHandshake, gotHandshake)
+		return
+	}
+}
+
+func createHandshakeBytes(peerId []byte, infoHash []byte) []byte {
+	handshakeBytes := append([]byte(HandshakeMsg), []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
+	handshakeBytes = append(handshakeBytes, infoHash...)
+	handshakeBytes = append(handshakeBytes, peerId...)
+
+	return handshakeBytes
+}
+
 func TestInitiatingHandshake(t *testing.T) {
-	writeBuffer := bytes.NewBuffer([]byte{})
+	peerId := GenerateRandomProtocolId()
+	remotePeerId := GenerateRandomProtocolId()
+	infoHash := GenerateRandomProtocolId()
 
-	seeder := Seeder{SeederInfo: PeerInfo{PeerId: GenerateRandomProtocolId()}, SeederWriter: writeBuffer, MetaInfo: &MetaInfo{infoHash: GenerateRandomProtocolId()}}
-
-	err := seeder.InitiateHandshake()
-
-	if err != nil {
-		t.Errorf("Did not expect error %#v", err)
+	testCases := []handshakeTestCase{
+		{
+			name:                 "Connection severed by remote",
+			peerId:               peerId,
+			remotePeerId:         remotePeerId,
+			infoHash:             infoHash,
+			readBuffer:           nil,
+			connectionChecker:    func() (bool, error) { return true, nil },
+			expectedError:        true,
+			expectedErrorMsgPart: "severed",
+		},
+		{
+			name:                 "Connection check error",
+			peerId:               peerId,
+			remotePeerId:         remotePeerId,
+			infoHash:             infoHash,
+			readBuffer:           nil,
+			connectionChecker:    func() (bool, error) { return true, errors.New("random message") },
+			expectedError:        true,
+			expectedErrorMsgPart: "random message",
+		},
+		{
+			name:                 "Wrong handshake from remote side",
+			peerId:               peerId,
+			remotePeerId:         remotePeerId,
+			infoHash:             infoHash,
+			readBuffer:           bytes.NewBuffer([]byte("This is not OK.")),
+			connectionChecker:    func() (bool, error) { return false, nil },
+			expectedError:        true,
+			expectedErrorMsgPart: "handshake",
+		},
+		{
+			name:              "OK",
+			peerId:            peerId,
+			remotePeerId:      remotePeerId,
+			infoHash:          infoHash,
+			readBuffer:        bytes.NewBuffer(createHandshakeBytes(remotePeerId, infoHash)),
+			connectionChecker: func() (bool, error) { return false, nil },
+			expectedError:     false,
+		},
 	}
 
-	expectingSequence := []struct {
-		name  string
-		bytes []byte
-	}{
-		{"Protocol", []byte(HandshakeMsg)},
-		{"Reserved", make([]byte, 8)},
-		{"Infohash", seeder.MetaInfo.GetInfoHash()},
-		{"PeerId", seeder.SeederInfo.PeerId},
-	}
-
-	for i := range expectingSequence {
-		readingBytes := make([]byte, len(expectingSequence[i].bytes))
-
-		n, err := writeBuffer.Read(readingBytes)
-		if err != nil {
-			t.Errorf("Did not expect err %#v", err)
-		}
-
-		if n < len(readingBytes) {
-			t.Errorf("Could not read %d bytes", len(readingBytes))
-		}
-
-		if err == nil {
-			if !reflect.DeepEqual(readingBytes, expectingSequence[i].bytes) {
-				t.Errorf("Expected %#v, got %#v", expectingSequence[i].bytes, readingBytes)
-			}
-		}
+	for i := range testCases {
+		t.Run(testCases[i].name, func(t *testing.T) {
+			runInitiatingHandshakeTests(&testCases[i], t)
+		})
 	}
 }
 
