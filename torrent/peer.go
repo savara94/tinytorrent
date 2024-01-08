@@ -70,9 +70,9 @@ type ConnectionTerminator func() error
 type PeerConnection struct {
 	PeerId              []byte
 	RemotePeerId        []byte
+	InfoHash            []byte
 	PeerWriter          io.Writer
 	PeerReader          io.Reader
-	MetaInfo            *MetaInfo
 	IsConnectionSevered ConnectionChecker
 	SevereConnection    ConnectionTerminator
 }
@@ -89,15 +89,20 @@ func GenerateRandomProtocolId() []byte {
 	return b
 }
 
-func (pc *PeerConnection) InitiateHandshake() error {
+func (pc *PeerConnection) createHandshakeBytes(peerId []byte) []byte {
 	var handshakeBytesWithoutPeerId []byte
 
 	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, []byte(HandshakeMsg)...)
 	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
-	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, pc.MetaInfo.GetInfoHash()...)
+	handshakeBytesWithoutPeerId = append(handshakeBytesWithoutPeerId, pc.InfoHash...)
 
-	myHandshakeBytes := append(handshakeBytesWithoutPeerId, pc.PeerId...)
-	remoteHandshakeBytes := append(handshakeBytesWithoutPeerId, pc.RemotePeerId...)
+	handshakeBytes := append(handshakeBytesWithoutPeerId, peerId...)
+
+	return handshakeBytes
+}
+
+func (pc *PeerConnection) sendHandshake() error {
+	myHandshakeBytes := pc.createHandshakeBytes(pc.PeerId)
 
 	n, err := pc.PeerWriter.Write(myHandshakeBytes)
 	if err != nil {
@@ -106,6 +111,85 @@ func (pc *PeerConnection) InitiateHandshake() error {
 
 	if n < len(myHandshakeBytes) {
 		return errors.New("Couldn't send all my handshake bytes.")
+	}
+
+	return nil
+}
+
+func (pc *PeerConnection) receiveHandshake(checkPeerId bool) error {
+	expectedHandshakeBytes := pc.createHandshakeBytes(pc.RemotePeerId)
+	readBytes := make([]byte, len(expectedHandshakeBytes))
+
+	n, err := pc.PeerReader.Read(readBytes)
+	if err != nil {
+		return err
+	}
+
+	if n < len(readBytes) {
+		return errors.New("Not whole handshake message received.")
+	}
+
+	compareUpTo := len(readBytes)
+	if !checkPeerId {
+		compareUpTo = len(readBytes) - len(pc.PeerId)
+	}
+
+	if !reflect.DeepEqual(readBytes[:compareUpTo], expectedHandshakeBytes[:compareUpTo]) {
+		err = pc.SevereConnection()
+		if err != nil {
+			errMsg := fmt.Sprintf("Could not severe connection with %s %v", hex.EncodeToString(pc.RemotePeerId), err)
+			slog.Error(errMsg)
+		}
+
+		return errors.New("Did not receive expected handshake bytes.")
+	}
+
+	return nil
+}
+
+func (pc *PeerConnection) AcceptHandshake() error {
+	if len(pc.PeerId) == 0 {
+		return errors.New("You must specify peer id!")
+	}
+
+	if len(pc.InfoHash) == 0 {
+		return errors.New("You must specify infohash!")
+	}
+
+	err := pc.receiveHandshake(false)
+	if err != nil {
+		return err
+	}
+
+	err = pc.sendHandshake()
+	if err != nil {
+		return err
+	}
+
+	severed, err := pc.IsConnectionSevered()
+	if severed {
+		return errors.New("Connection was severed by peer.")
+	}
+
+	return err
+}
+
+func (pc *PeerConnection) InitiateHandshake() error {
+	if len(pc.PeerId) == 0 {
+		return errors.New("You must specify peer id!")
+	}
+
+	if len(pc.RemotePeerId) == 0 {
+		return errors.New("You must specify remote peer id!")
+	}
+
+	if len(pc.InfoHash) == 0 {
+		return errors.New("You must specify infohash!")
+	}
+
+	err := pc.sendHandshake()
+	if err != nil {
+		return err
 	}
 
 	severed, err := pc.IsConnectionSevered()
@@ -118,21 +202,9 @@ func (pc *PeerConnection) InitiateHandshake() error {
 		return errors.New(errMsg)
 	}
 
-	readBytes := make([]byte, len(remoteHandshakeBytes))
-
-	n, err = pc.PeerReader.Read(readBytes)
+	err = pc.receiveHandshake(true)
 	if err != nil {
 		return err
-	}
-
-	if !reflect.DeepEqual(readBytes, remoteHandshakeBytes) {
-		err = pc.SevereConnection()
-		if err != nil {
-			errMsg := fmt.Sprintf("Could not severe connection with %s %v", hex.EncodeToString(pc.RemotePeerId), err)
-			slog.Error(errMsg)
-		}
-
-		return errors.New("Did not receive expected handshake bytes.")
 	}
 
 	return nil

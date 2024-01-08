@@ -27,9 +27,9 @@ func runInitiatingHandshakeTests(testCase *handshakeTestCase, t *testing.T) {
 	peerConnection := PeerConnection{
 		PeerId:              testCase.peerId,
 		RemotePeerId:        testCase.remotePeerId,
+		InfoHash:            testCase.infoHash,
 		PeerWriter:          buffer,
 		PeerReader:          testCase.readBuffer,
-		MetaInfo:            &MetaInfo{infoHash: testCase.infoHash},
 		IsConnectionSevered: testCase.connectionChecker,
 	}
 
