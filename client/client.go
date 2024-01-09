@@ -18,12 +18,7 @@ import (
 	"example.com/torrent"
 )
 
-type PeerConnectionBuilder interface {
-	BuildPeerConnection(peer *db.Peer) (*torrent.PeerConnection, error)
-}
-
 type Client struct {
-	PeerConnectionBuilder
 	Client db.Client
 	Port   uint16
 
@@ -33,6 +28,7 @@ type Client struct {
 	PieceRepo      db.PieceRepository
 	PeerRepo       db.PeerRepository
 	ConnectionRepo db.ConnectionRepository
+	Manager        ConnectionManager
 
 	initialized bool
 }
@@ -237,44 +233,6 @@ func (c *Client) ProcessTrackerAnnounce(trackerAnnounce *db.TrackerAnnounce) ([]
 	}
 
 	return dbPeers, nil
-}
-
-func (c *Client) ConnectToPeer(dbPeer *db.Peer) (*db.Connection, error) {
-	peerInfo := fmt.Sprintf("%d:%s", dbPeer.PeerId, hex.EncodeToString(dbPeer.ProtocolPeerId))
-
-	peerConnection, err := c.BuildPeerConnection(dbPeer)
-	if err != nil {
-		errMsg := fmt.Sprintf("Could not build peer connection with peer %s", peerInfo)
-		slog.Error(errMsg)
-		return nil, err
-	}
-
-	err = peerConnection.InitiateHandshake()
-	if err != nil {
-		errMsg := fmt.Sprintf("Handshake failed with peer %s", peerInfo)
-		slog.Error(errMsg)
-
-		return nil, err
-	}
-
-	infoMsg := fmt.Sprintf("Established handshake with %s", peerInfo)
-	slog.Info(infoMsg)
-
-	dbConnection := db.Connection{
-		TorrentId:          dbPeer.TorrentId,
-		RemotePeerId:       dbPeer.PeerId,
-		ImChoked:           true,
-		RemoteIsChoked:     true,
-		ImInterested:       false,
-		RemoteIsInterested: false,
-		DownloadRate:       0,
-		UploadRate:         0,
-		LastActivity:       time.Now(),
-	}
-
-	err = c.ConnectionRepo.Upsert(&dbConnection)
-
-	return &dbConnection, err
 }
 
 func (c *Client) Listen() error {
