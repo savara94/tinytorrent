@@ -8,22 +8,15 @@ import (
 	"io"
 	"log"
 	"log/slog"
-	"net"
 	"os"
 	"path"
-	"strconv"
 	"time"
 
 	"example.com/db"
 	"example.com/torrent"
 )
 
-type PeerConnectionBuilder interface {
-	BuildPeerConnection(peer *db.Peer) (*torrent.PeerConnection, error)
-}
-
 type Client struct {
-	PeerConnectionBuilder
 	Client db.Client
 	Port   uint16
 
@@ -33,6 +26,7 @@ type Client struct {
 	PieceRepo      db.PieceRepository
 	PeerRepo       db.PeerRepository
 	ConnectionRepo db.ConnectionRepository
+	Manager        ConnectionManager
 
 	initialized bool
 }
@@ -239,66 +233,19 @@ func (c *Client) ProcessTrackerAnnounce(trackerAnnounce *db.TrackerAnnounce) ([]
 	return dbPeers, nil
 }
 
-func (c *Client) ConnectToPeer(dbPeer *db.Peer) (*db.Connection, error) {
-	peerInfo := fmt.Sprintf("%d:%s", dbPeer.PeerId, hex.EncodeToString(dbPeer.ProtocolPeerId))
-
-	peerConnection, err := c.BuildPeerConnection(dbPeer)
-	if err != nil {
-		errMsg := fmt.Sprintf("Could not build peer connection with peer %s", peerInfo)
-		slog.Error(errMsg)
-		return nil, err
-	}
-
-	err = peerConnection.InitiateHandshake()
-	if err != nil {
-		errMsg := fmt.Sprintf("Handshake failed with peer %s", peerInfo)
-		slog.Error(errMsg)
-
-		return nil, err
-	}
-
-	infoMsg := fmt.Sprintf("Established handshake with %s", peerInfo)
-	slog.Info(infoMsg)
-
-	dbConnection := db.Connection{
-		TorrentId:          dbPeer.TorrentId,
-		RemotePeerId:       dbPeer.PeerId,
-		ImChoked:           true,
-		RemoteIsChoked:     true,
-		ImInterested:       false,
-		RemoteIsInterested: false,
-		DownloadRate:       0,
-		UploadRate:         0,
-		LastActivity:       time.Now(),
-	}
-
-	err = c.ConnectionRepo.Upsert(&dbConnection)
-
-	return &dbConnection, err
-}
-
 func (c *Client) Listen() error {
-	address := ":" + strconv.Itoa(int(c.Port))
-
-	l, err := net.Listen("tcp", address)
-	if err != nil {
-		return err
-	}
-
-	defer l.Close()
-
+	// TODO
+	// Add a way to gracefully exit the loop here.
 	for {
-		conn, err := l.Accept()
+		connection, err := c.Manager.Listen()
 		if err != nil {
 			errMsg := fmt.Sprintf("Error on accepting connection %v", err)
 			slog.Error(errMsg)
 			continue
 		}
 
-		go func(netConnection net.Conn) {
-
-			netConnection.Close()
-		}(conn)
+		infoMsg := fmt.Sprintf("Peer %s connected. ", hex.EncodeToString(connection.PeerConnection.PeerId))
+		slog.Info(infoMsg)
 	}
 
 }
